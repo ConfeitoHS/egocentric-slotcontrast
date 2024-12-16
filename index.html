@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta property="og:title" content="Temporally Consistent Object-Centric Learning by Contrasting Slots">
+    <meta name="twitter:description" content="Temporally Consistent Object-Centric Learning by Contrasting Slots">
+    <meta name="keywords" content="object-centric representations, scene decomposition, temporal consistency">
+    <title>Temporally Consistent Object-Centric Learning by Contrasting Slots</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+  
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="static/css/bulma.min.css">
+    <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
+    <link rel="stylesheet" href="static/css/bulma-slider.min.css">
+    <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
+    <link rel="stylesheet" href="css/academicons.min.css">
+    <link rel="stylesheet" href="static/css/index.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+    <!-- Icon -->
+    <link rel="icon" href="static/images/logo.png" type="image/x-icon"/>
+  
+    <!-- Scripts -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://documentcloud.adobe.com/view-sdk/main.js"></script>
+    <script defer src="static/js/fontawesome.all.min.js"></script>
+    <script src="static/js/bulma-carousel.js"></script>
+    <script src="static/js/bulma-slider.min.js"></script>
+    <script src="static/js/index.js"></script>
+  
+    <!-- MathJax -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <!-- Removed problematic Polyfill -->
+    <!-- <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script> -->
+  
+    <!-- Local Polyfill (if needed) -->
+    <!-- <script src="polyfill.min.js"></script> -->
+  </head>
+  
+  
+<body>
+  <section class="hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="columns is-centered is-vcentered">
+          <div class="column is-three-quarters is-offset-0 has-text-centered">
+            <h1 class="title is-1 publication-title">
+              Temporally Consistent Object-Centric Learning <br> by Contrasting Slots
+            </h1>
+            <div class="is-size-5 publication-authors">
+              <!-- Paper authors -->
+              <span class="author-block">Anna Manasyan<sup>1</sup>,</span>
+              <span class="author-block">Maximilian Seitzer<sup>1</sup>,</span>
+              <span class="author-block">Filip Radovic<sup>1</sup>,</span>
+             
+              <span class="author-block">Georg Martius<sup>1,3</sup></span>
+              <span class="author-block">Andrii Zadaianchuk<sup>2</sup>,</span>
+              
+            </div>
+                  <div class="is-size-5 publication-authors">
+                    <span class="author-block"><sup>1</sup>University of Tubingen, Tubingen, Germany</span>
+                    <span class="author-block"><sup>2</sup>University of Amsterdam, Amsterdam, Netherlands</span>
+                    <span class="author-block"><sup>3</sup>Max Planck Institute for Intelligent Systems, Tubingen, Germany</span>
+                
+                  </div>
+            
+            <!-- ArXiv abstract Link -->
+            <span class="link-block">
+              <a href="" target="_blank"
+              class="external-link button is-normal is-rounded is-dark">
+              <span class="icon">
+                <i class="ai ai-arxiv"></i>
+              </span>
+              <span>arXiv</span>
+            </a>
+          </span>
+          <!-- Github link -->
+          <span class="link-block">
+            <a href="https://github.com/martius-lab/slotcontrasts" target="_blank"
+            class="external-link button is-normal is-rounded is-dark">
+            <span class="icon">
+              <i class="fab fa-github"></i>
+          </span>
+             <span>Code</span>
+             </a>
+            </span> 
+          </span>
+          <span class="link-block">
+            <a href="mailto:anna.manasyan@student.uni-tuebingen.de, a.zadaianchuk@uva.nl" 
+               target="_blank" class="external-link button is-normal is-rounded is-dark">
+                <span class="icon">
+                    <i class="fa fa-envelope"></i>
+                </span>
+                <span>Contact</span>
+            </a>
+        </span>
+        
+                  
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Teaser video-->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <video poster="" id="tree" autoplay controls muted loop height="100%">
+        <source src="static/videos/teaser.mp4"
+        type="video/mp4">
+      </video>
+      <h2 class="subtitle has-text-centered">
+        
+      </h2>
+    </div>
+  </div>
+</section>
+<!-- End teaser video -->
+
+
+<!-- Paper abstract -->
+<section class="section hero is-light">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-three-quarters is-offset-0">
+        <h2 class="title is-3" style="margin-left: -30px;">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Unsupervised object-centric learning from videos is a promising approach to extract structured representations from large, unlabeled collections of videos. 
+            To support downstream tasks like autonomous control, these representations must be both compositional and temporally consistent. 
+            Existing approaches based on recurrent processing often lack long-term stability across frames because their training objective does not enforce temporal consistency.
+            In this work, we introduce a novel object-level temporal contrastive loss for video object-centric models that explicitly promotes temporal consistency.
+            Our method significantly improves the temporal consistency of the learned object-centric representations, yielding more reliable video decompositions that facilitate challenging downstream tasks such as unsupervised object dynamics prediction.
+            Furthermore, the inductive bias added by our loss strongly improves object discovery, leading to state-of-the-art results on both synthetic and real-world datasets, outperforming even weakly-supervised methods that leverage motion masks as additional cues.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End paper abstract -->
+
+
+<!-- Image carousel with descriptions -->
+<section class="hero is-small">
+  <div class="hero-body">
+    <div class="container">
+      <div id="results-carousel" class="carousel results-carousel">
+        <!-- Image 1 with description -->
+        <div class="carousel-item">
+          <p class="has-text-centered" style="margin-bottom: 40px;">Overview of Slot-Slot Contrastive and Feature Reconstruction loss functions.</p>
+          <img src="static/images/SS_and_FeatRec_loss_v3.png" alt="Graph 1" />
+        </div>
+        <!-- Image 2 with description -->
+        <div class="carousel-item">
+          <p class="has-text-centered" style="margin-bottom: 40px;">SLOT CONTRAST model architecture overview.</p>
+          <img src="static/images/Slot_Contrast_v2.png" alt="Graph 2" />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- End Image carousel with descriptions -->
+
+<!--Quantitative Comparison -->
+<section class="section">
+  <div class="container">
+    <h2 class="title is-3 has-text-centered">Quantitative Comparison</h2>
+    <div class="columns is-centered">
+      <div class="column is-half has-text-centered">
+        <p>Consistent object-discovery performance of SLOT CONTRAST in comparison with SAVi, STEVE, VideoSAUR on MOVi-C, MOVi-E, and YouTube-VIS datasets. VideoSAURv2 is an improved version of the VideoSAUR trained on DINOv2 features. Both metrics are computed for the whole video (24 frames for MOVi, up to 76 frames for YouTube-VIS).</p>
+        <img src="static/images/discovery.png" alt="Object discovery" />
+      </div>
+      <div class="column is-half has-text-centered">
+        <p>Downstream task of predicting object dynamics. Comparison of predictions made by SlotFormer based on representations obtained from SLOT CONTRAST and from Feature Reconstruction.</p>
+        <img src="static/images/dynamics.png" alt="Object dynamics" />
+      </div>
+    </div>
+  </div>
+</section>
+<!-- End Quantitative Comparison -->
+
+<!-- Video carousel -->
+<section class="hero is-small">
+  <div class="hero-body">
+    <div class="container has-text-centered">
+      <!-- Main Title centered -->
+      <h2 class="title is-3">Qualitative Comparison</h2>
+      
+      <!-- Subtitles for SlotContrast and VideoSAURv2 -->
+      <div class="columns is-centered" style="margin-bottom: -20px;"> <!-- Reduced margin -->
+        <div class="column is-one-quarter">
+          <h3 class="title is-4" style="margin-bottom: 0;">SlotContrast</h3> <!-- Removed margin-bottom -->
+        </div>
+        <div class="column is-one-quarter">
+          <h3 class="title is-4" style="margin-bottom: 0;">VideoSAURv2</h3> <!-- Removed margin-bottom -->
+        </div>
+      </div>
+
+      <!-- Carousel -->
+      <div id="results-carousel" class="carousel results-carousel" style="max-width: 800px; margin: 0 auto;">
+        <!-- Item 1: Single video -->
+        <div class="item item-video1">
+          <video poster="" id="video1" autoplay controls muted loop height="150px" width="auto">
+            <source src="static/videos/comparisons/128.mp4" type="video/mp4">
+          </video>
+        </div>
+
+        <!-- Item 2: Single video -->
+        <div class="item item-video2">
+          <video poster="" id="video2" autoplay controls muted loop height="150px" width="auto">
+            <source src="static/videos/comparisons/160.mp4" type="video/mp4">
+          </video>
+        </div>
+
+        <!-- Item 3: Single video -->
+        <div class="item item-video3">
+          <video poster="" id="video3" autoplay controls muted loop height="150px" width="auto">
+            <source src="static/videos/comparisons/151.mp4" type="video/mp4">
+          </video>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!--End Video carousel -->
+
+
+<!-- Example Dynamics -->
+<section class="hero is-small">
+  <div class="hero-body">
+    <div class="container">
+      <h2 class="title is-3 has-text-centered">Object Dynamics Prediction on MOVi-C dataset</h2>
+      <div class="columns is-centered">
+        <!-- Left Column for SlotContrast -->
+        <div class="column is-one-quarter has-text-centered">
+          <!-- Subtitle for SlotContrast -->
+          <h3 class="title is-4">SlotContrast</h3>
+        </div>
+        
+        <!-- Right Column for VideoSAURv2 -->
+        <div class="column is-one-quarter has-text-centered">
+          <!-- Subtitle for VideoSAURv2 -->
+          <h3 class="title is-4">VideoSAURv2</h3>
+        </div>
+      </div>
+      <div class="columns is-centered">
+        <!-- Video Column with fixed width of 800px, slightly moved to the left -->
+        <div class="column is-half">
+          <div class="video-container" style="width: 750px; margin-left: -40px;">
+            <video autoplay controls muted loop style="width: 100%; height: auto;">
+              <source src="static/videos/dynamics/190_combined.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!--End Example Dynamics -->
+</body>
+
+<footer class="footer is-small">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8 has-text-centered">
+        <div class="content">
+          <p class="footer-text">
+            This page was built using the <a href="https://github.com/eliahuhorwitz/Academic-project-page-template" target="_blank">Academic Project Page Template</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+</html>

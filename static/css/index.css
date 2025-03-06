@@ -168,3 +168,17 @@ body {
   text-align: center;
 }
 
+/* Ensure images have some padding to avoid button overlap */
+.carousel-item img {
+  max-width: 100%;
+  height: auto;
+  padding: 30px; /* Increases space around images */
+}
+
+/* Increase the padding around the entire carousel */
+.results-carousel {
+  padding: 30px;
+  position: relative;
+}
+
+

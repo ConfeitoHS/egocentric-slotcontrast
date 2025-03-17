@@ -68,9 +68,9 @@ We list the results you should roughly be able to obtain with the configs includ
 
 | Dataset      | Model Variant    | Video ARI | Video mBO | Config                      | Checkpoint Link                                                                                             |
 |--------------|------------------|-----------|-----------|-----------------------------|------------------------------------------------------------------------------------------------------------|
-| MOVi-C       | ViT-B/8, DINO    |  69.3    |  32.7     | slotcontrast/movi_c.yml        | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/movi_c.ckpt) |
-| MOVi-E       | ViT-B/8, DINO    | 82.9      | 29.2     | slotcontrast/movi_e.yml        | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/movi_e.ckpt) |
-| YT-VIS 2021  | ViT-B/16, DINO   | 38.0      | 33.7      | slotcontrast/ytvis2021.yml         | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/ytvis.ckpt)   |
+| MOVi-C       | ViT-S/14, DINOv2    |  69.3    |  32.7     | slotcontrast/movi_c.yml        | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/movi_c.ckpt) |
+| MOVi-E       | ViT-B/14, DINOv2    | 82.9      | 29.2     | slotcontrast/movi_e.yml        | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/movi_e.ckpt) |
+| YT-VIS 2021  | ViT-B/14, DINOv2   | 38.0      | 33.7      | slotcontrast/ytvis2021.yml         | [Checkpoint](https://huggingface.co/annamanasyan/slotcontrast/resolve/main/ytvis.ckpt)   |
 |
 
 

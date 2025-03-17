@@ -168,6 +168,20 @@ body {
   text-align: center;
 }
 
+<<<<<<< HEAD:static/css/index.css
+=======
+/* Ensure the navigation buttons are positioned correctly */
+.results-carousel .carousel-nav {
+  z-index: 10; /* Bring buttons to the front */
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5); /* Optional: adds background for visibility */
+}
+
+
+
+>>>>>>> 85ad930 (SlotContrast initial commit):docs/static/css/index.css
 /* Ensure images have some padding to avoid button overlap */
 .carousel-item img {
   max-width: 100%;
@@ -180,5 +194,8 @@ body {
   padding: 30px;
   position: relative;
 }
+<<<<<<< HEAD:static/css/index.css
 
 
+=======
+>>>>>>> 85ad930 (SlotContrast initial commit):docs/static/css/index.css

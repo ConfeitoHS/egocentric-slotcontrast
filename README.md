@@ -5,7 +5,7 @@ This is the code release for the paper **Temporally Consistent Object-Centric Le
 - [Webpage](https://slotcontrast.github.io/)
 - [Arxiv](https://arxiv.org/abs/2412.14295)
 
-![Temporal Feature Similarities](https://martius-lab.github.io/slotcontrast/static/images/SS_and_FeatRec_loss_new.png)
+![slot-slot contrastive loss](https://martius-lab.github.io/docs/static/images/SS_and_FeatRec_loss_new.png)
 
 ## Summary
 

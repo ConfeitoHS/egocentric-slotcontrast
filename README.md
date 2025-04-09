@@ -1,6 +1,6 @@
 # SlotContrast
 
-This is the code release for the paper **Temporally Consistent Object-Centric Learning by Contrasting Slots (CVPR 2025)**, by Anna Manasyan, Maximilian Seitzer, Filip Radovic, Georg Martius, Andrii Zadaianchuk.
+This is the code release for the paper **Temporally Consistent Object-Centric Learning by Contrasting Slots (CVPR 2025 Oral)**, by Anna Manasyan, Maximilian Seitzer, Filip Radovic, Georg Martius, Andrii Zadaianchuk.
 
 - [Webpage](https://slotcontrast.github.io/)
 - [Arxiv](https://arxiv.org/abs/2412.14295)

@@ -308,7 +308,7 @@ def create_grid_frame_rgb(frames, grid_size=(2, 6), image_size=(224, 224), paddi
     
     return grid_frame
 
-def mix_inputs_with_masks(inputs, outputs, softmasks=True):
+def mix_inputs_with_masks(inputs, outputs, softmasks=False):
         
     b, f, n_slots, hw = outputs["decoder"]["masks"].shape
     h = int(np.sqrt(hw))

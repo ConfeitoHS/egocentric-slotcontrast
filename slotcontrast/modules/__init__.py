@@ -1,5 +1,6 @@
 from slotcontrast.modules import timm
 from slotcontrast.modules.decoders import build as build_decoder
+from slotcontrast.modules.dynamics import build as build_dynamics_predictor
 from slotcontrast.modules.encoders import build as build_encoder
 from slotcontrast.modules.groupers import build as build_grouper
 from slotcontrast.modules.initializers import build as build_initializer
@@ -12,6 +13,7 @@ from slotcontrast.modules.video import build as build_video
 
 __all__ = [
     "build_decoder",
+    "build_dynamics_predictor",
     "build_encoder",
     "build_grouper",
     "build_initializer",
@@ -31,6 +33,7 @@ __all__ = [
 
 BUILD_FNS_BY_MODULE_GROUP = {
     "decoders": build_decoder,
+    "dynamics_predictors": build_dynamics_predictor,
     "encoders": build_encoder,
     "groupers": build_grouper,
     "initializers": build_initializer,

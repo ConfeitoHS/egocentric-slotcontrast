@@ -18,11 +18,14 @@ def build(config, name: str):
     if name == "two_layer_mlp":
         inp_dim = None
         outp_dim = None
+        frozen = False
         if "dim" in config:
             inp_dim = config["dim"]
             outp_dim = config["dim"]
         if "inp_dim" in config:
             inp_dim = config["inp_dim"]
+        if "outp_dim" in config:
+            outp_dim = config["outp_dim"]
         if "outp_dim" in config:
             outp_dim = config["outp_dim"]
 
@@ -47,6 +50,7 @@ def build(config, name: str):
             final_activation,
             residual,
             weight_init,
+            frozen,
         )
     elif name == "slot_attention_encoder" or name.startswith("savi_cnn_encoder"):
         inp_dim = config.get("inp_dim", 3)
@@ -97,6 +101,7 @@ class MLP(nn.Module):
         final_activation: Union[bool, str] = False,
         residual: bool = False,
         weight_init: str = DEFAULT_WEIGHT_INIT,
+        frozen: bool = False,
     ):
         super().__init__()
         self.residual = residual
@@ -121,6 +126,10 @@ class MLP(nn.Module):
 
         self.layers = nn.Sequential(*layers)
         utils.init_parameters(self.layers, weight_init)
+
+        if frozen:
+            for param in self.parameters():
+                param.requires_grad = False
 
     def forward(self, inp: torch.Tensor) -> torch.Tensor:
         outp = self.layers(inp)
@@ -642,6 +651,7 @@ class TransformerEncoder(nn.Module):
         activation: Union[str, Callable[[torch.Tensor], torch.Tensor]] = "relu",
         hidden_dim: Optional[int] = None,
         initial_residual_scale: Optional[float] = None,
+        frozen: bool = False,
     ):
         super().__init__()
 
@@ -667,6 +677,10 @@ class TransformerEncoder(nn.Module):
                 for _ in range(n_blocks)
             ]
         )
+
+        if frozen:
+            for param in self.parameters():
+                param.requires_grad = False
 
     def forward(
         self,

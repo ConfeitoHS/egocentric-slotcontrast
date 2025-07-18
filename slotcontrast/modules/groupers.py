@@ -23,6 +23,7 @@ class SlotAttention(nn.Module):
         eps: float = 1e-8,
         use_gru: bool = True,
         use_mlp: bool = True,
+        frozen: bool = False,
     ):
         super().__init__()
         assert n_iters >= 1
@@ -55,6 +56,10 @@ class SlotAttention(nn.Module):
         self.n_iters = n_iters
         self.eps = eps
         self.scale = kvq_dim**-0.5
+
+        if frozen:
+            for param in self.parameters():
+                param.requires_grad = False
 
     def step(
         self, slots: torch.Tensor, keys: torch.Tensor, values: torch.Tensor

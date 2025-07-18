@@ -1,3 +1,4 @@
+from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -30,6 +31,10 @@ def build(
         assert (
             model_config.target_encoder_input is not None
         ), "Please specify `target_encoder_input`."
+
+    dynamics_predictor = None
+    if model_config.dynamics_predictor:
+        dynamics_predictor = modules.build_dynamics_predictor(model_config.dynamics_predictor)
 
     input_type = model_config.get("input_type", "image")
     if input_type == "image":
@@ -122,6 +127,7 @@ def build(
         loss_fns,
         loss_weights=model_config.get("loss_weights", None),
         target_encoder=target_encoder,
+        dynamics_predictor=dynamics_predictor,
         train_metrics=train_metrics,
         val_metrics=val_metrics,
         mask_resizers=mask_resizers,
@@ -150,6 +156,7 @@ class ObjectCentricModel(pl.LightningModule):
         *,
         loss_weights: Optional[Dict[str, float]] = None,
         target_encoder: Optional[nn.Module] = None,
+        dynamics_predictor: Optional[nn.Module] = None,
         train_metrics: Optional[Dict[str, torchmetrics.Metric]] = None,
         val_metrics: Optional[Dict[str, torchmetrics.Metric]] = None,
         mask_resizers: Optional[Dict[str, modules.Resizer]] = None,
@@ -166,6 +173,7 @@ class ObjectCentricModel(pl.LightningModule):
         self.processor = processor
         self.decoder = decoder
         self.target_encoder = target_encoder
+        self.dynamics_predictor = dynamics_predictor
 
         if loss_weights is not None:
             # Filter out losses that are not used
@@ -197,7 +205,7 @@ class ObjectCentricModel(pl.LightningModule):
         if isinstance(masks_to_visualize, str):
             masks_to_visualize = [masks_to_visualize]
         for key in masks_to_visualize:
-            if key not in ("decoder", "grouping"):
+            if key not in ("decoder", "grouping", "dynamics_predictor"):
                 raise ValueError(f"Unknown mask type {key}. Should be `decoder` or `grouping`.")
         self.mask_keys_to_visualize = [f"{key}_masks" for key in masks_to_visualize]
 
@@ -221,6 +229,8 @@ class ObjectCentricModel(pl.LightningModule):
             "processor": self.processor,
             "decoder": self.decoder,
         }
+        if self.dynamics_predictor:
+            modules["dynamics_predictor"] = self.dynamics_predictor
         return self.optimizer_builder(modules)
 
     def forward(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -242,6 +252,16 @@ class ObjectCentricModel(pl.LightningModule):
             "processor": processor_output,
             "decoder": decoder_output,
         }
+
+        if self.dynamics_predictor:
+            outputs["dynamics_predictor"] = self.dynamics_predictor(slots)
+            predicted_slots = outputs["dynamics_predictor"].get("next_state")
+            decoded_predicted_slots = self.decoder(predicted_slots)
+            decoded_predicted_slots = {
+                f"predicted_{key}": value for key, value in decoded_predicted_slots.items()
+            }
+            outputs["decoder"].update(decoded_predicted_slots)
+
         outputs["targets"] = self.get_targets(inputs, outputs)
 
         return outputs
@@ -298,6 +318,22 @@ class ObjectCentricModel(pl.LightningModule):
         if grouping_masks_metrics_hard is not None:
             aux_outputs["grouping_masks_hard"] = grouping_masks_metrics_hard
 
+        if self.dynamics_predictor:
+            dynamics_predictor_masks = outputs["decoder"].get("predicted_masks")
+            (
+                dynamics_predictor_masks,
+                dynamics_predictor_masks_hard,
+                dynamics_predictor_masks_metrics_hard,
+            ) = self.process_masks(
+                dynamics_predictor_masks, inputs, self.mask_resizers.get("decoder")
+            )
+            if dynamics_predictor_masks is not None:
+                aux_outputs["dynamics_predictor_masks"] = dynamics_predictor_masks
+            if dynamics_predictor_masks_hard is not None:
+                aux_outputs["dynamics_predictor_masks_vis_hard"] = dynamics_predictor_masks_hard
+            if dynamics_predictor_masks_metrics_hard is not None:
+                aux_outputs["dynamics_predictor_masks_hard"] = dynamics_predictor_masks_metrics_hard
+
         return aux_outputs
 
     def get_targets(
@@ -344,9 +380,18 @@ class ObjectCentricModel(pl.LightningModule):
             to_log = {f"train/{name}": loss for name, loss in losses.items()}
             to_log["train/loss"] = total_loss
 
+        if self.train_metrics and self.dynamics_predictor:
+            prediction_batch = copy.deepcopy(batch)
+            for k, v in prediction_batch.items():
+                if isinstance(v, torch.Tensor) and v.dim() == 5:
+                    prediction_batch[k] = v[:, self.dynamics_predictor.history_len :]
+
         if self.train_metrics:
             for key, metric in self.train_metrics.items():
-                values = metric(**batch, **outputs, **aux_outputs)
+                if "predicted" in key.lower():
+                    values = metric(**prediction_batch, **outputs, **aux_outputs)
+                else:
+                    values = metric(**batch, **outputs, **aux_outputs)
                 self._add_metric_to_log(to_log, f"train/{key}", values)
                 metric.reset()
         self.log_dict(to_log, on_step=True, on_epoch=False, batch_size=outputs["batch_size"])
@@ -383,9 +428,18 @@ class ObjectCentricModel(pl.LightningModule):
             to_log = {f"val/{name}": loss for name, loss in losses.items()}
             to_log["val/loss"] = total_loss
 
+        if self.dynamics_predictor:
+            prediction_batch = copy.deepcopy(batch)
+            for k, v in prediction_batch.items():
+                if isinstance(v, torch.Tensor) and v.dim() == 5:
+                    prediction_batch[k] = v[:, self.dynamics_predictor.history_len :]
+
         if self.val_metrics:
-            for metric in self.val_metrics.values():
-                metric.update(**batch, **outputs, **aux_outputs)
+            for key, metric in self.val_metrics.items():
+                if "predicted" in key.lower():
+                    metric.update(**prediction_batch, **outputs, **aux_outputs)
+                else:
+                    metric.update(**batch, **outputs, **aux_outputs)
 
         self.log_dict(
             to_log, on_step=False, on_epoch=True, batch_size=outputs["batch_size"], prog_bar=True
@@ -441,7 +495,12 @@ class ObjectCentricModel(pl.LightningModule):
             video = torch.stack([denorm(video) for video in inputs])
             self._log_video(f"{mode}/{self.input_key}", video, global_step=step)
             for mask_name, masks in masks_by_name.items():
-                video_with_masks = visualizations.mix_videos_with_masks(video, masks)
+                if "dynamics_predictor" in mask_name:
+                    rollout_length = masks.shape[1]
+                    trimmed_video = video[:, -rollout_length:]
+                    video_with_masks = visualizations.mix_videos_with_masks(trimmed_video, masks)
+                else:
+                    video_with_masks = visualizations.mix_videos_with_masks(video, masks)
                 self._log_video(
                     f"{mode}/video_with_{mask_name}",
                     video_with_masks,

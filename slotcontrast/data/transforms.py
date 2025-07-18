@@ -197,22 +197,23 @@ def build(config):
 
     return transforms
 
+
 def build_inference_transform(config):
     """Builds the transform for inference.
-    
+
     Modity if needed to match the preprocessing needed for your video.
     """
     use_movi_normalization = config.get("use_movi_normalization", True)
     size = config.get("input_size", 224)
     dataset_type = config.get("dataset_type", "video")
-    
+
     resize_input = CropResize(
-            dataset_type=dataset_type,
-            crop_type="central",
-            size=size,
-            resize_mode="bilinear",
-            clamp_zero_one=False,
-        )
+        dataset_type=dataset_type,
+        crop_type="central",
+        size=size,
+        resize_mode="bilinear",
+        clamp_zero_one=False,
+    )
 
     if use_movi_normalization:
         normalize = Normalize(
@@ -228,7 +229,7 @@ def build_inference_transform(config):
             normalize,
         ]
     )
-    return  input_transform
+    return input_transform
 
 
 def _to_2tuple(val):

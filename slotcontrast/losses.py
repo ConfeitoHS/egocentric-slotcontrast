@@ -172,6 +172,7 @@ class CrossEntropyLoss(TorchLoss):
     def __init__(self, pred_key: str, target_key: str, **kwargs):
         super().__init__(pred_key, target_key, loss="CrossEntropyLoss", **kwargs)
 
+
 class Slot_Slot_Contrastive_Loss(Loss):
     def __init__(
         self,
@@ -198,4 +199,16 @@ class Slot_Slot_Contrastive_Loss(Loss):
         ss = ss.reshape(B * T, S, S)
         target = torch.eye(S).expand(B * T, S, S).to(ss.device)
         loss = self.criterion(ss, target)
+        return loss
+
+
+class DynamicsLoss(Loss):
+    def __init__(self, pred_key: str, target_key: str, **kwargs):
+        super().__init__(pred_key, target_key, **kwargs)
+        self.criterion = nn.MSELoss()
+
+    def forward(self, prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        rollout_length = prediction.shape[1]
+        target = target[:, -rollout_length:]
+        loss = self.criterion(prediction, target)
         return loss

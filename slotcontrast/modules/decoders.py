@@ -50,14 +50,19 @@ class MLPDecoder(nn.Module):
         n_patches: int,
         activation: str = "relu",
         eval_output_size: Optional[Tuple[int]] = None,
+        frozen: bool = False,
     ):
         super().__init__()
         self.outp_dim = outp_dim
         self.n_patches = n_patches
         self.eval_output_size = list(eval_output_size) if eval_output_size else None
 
-        self.mlp = networks.MLP(inp_dim, outp_dim + 1, hidden_dims, activation=activation)
+        self.mlp = networks.MLP(
+            inp_dim, outp_dim + 1, hidden_dims, activation=activation, frozen=frozen
+        )
         self.pos_emb = nn.Parameter(torch.randn(1, 1, n_patches, inp_dim) * inp_dim**-0.5)
+        if frozen:
+            self.pos_emb.requires_grad = False
 
     def forward(self, slots: torch.Tensor) -> Dict[str, torch.Tensor]:
         bs, n_slots, dims = slots.shape

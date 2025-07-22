@@ -1,4 +1,4 @@
-from copy import copy
+from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -429,7 +429,7 @@ class ObjectCentricModel(pl.LightningModule):
             to_log["val/loss"] = total_loss
 
         if self.dynamics_predictor:
-            prediction_batch = copy.deepcopy(batch)
+            prediction_batch = deepcopy(batch)
             for k, v in prediction_batch.items():
                 if isinstance(v, torch.Tensor) and v.dim() == 5:
                     prediction_batch[k] = v[:, self.dynamics_predictor.history_len :]

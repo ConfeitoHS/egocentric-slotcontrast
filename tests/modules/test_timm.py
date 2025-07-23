@@ -131,7 +131,7 @@ CUSTOM_VIT_WEIGHTS_RESULTS = {
 )
 def test_custom_pretrained_vits_output(name, inp_type, dims, expected_result):
     """Check that output of custom ViTs still aligns with results from their original repository."""
-    model = videosaur.modules.build_encoder(
+    model = slotcontrast.modules.build_encoder(
         {
             "name": "TimmExtractor",
             "model": name,

@@ -282,7 +282,7 @@ def create_grid_frame_rgb(frames, grid_size=(2, 6), image_size=(224, 224), paddi
     Create a grid frame from individual RGB frames.
 
     Args:
-        frames (list of np.ndarray): List of frames, each frame should be of shape (height, width, 3).
+        frames (list of np.ndarray): List of (H, W, 3) frames.
         grid_size (tuple): The grid size as (rows, columns).
         image_size (tuple): The size of each image in the grid as (height, width).
         padding (int): The padding size between images in the grid.

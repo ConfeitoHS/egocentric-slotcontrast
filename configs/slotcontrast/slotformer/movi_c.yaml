@@ -7,8 +7,8 @@ globals:
   DINO_MODEL: vit_small_patch14_dinov2
   FEAT_DIM: 384
   NUM_PATCHES: 576
-  NUM_GPUS: 0
-  BATCH_SIZE_PER_GPU: 1
+  NUM_GPUS: 1
+  BATCH_SIZE_PER_GPU: 64
   TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
   BASE_LR: 0.0001
   # SlotFormer params
@@ -30,8 +30,8 @@ optimizer:
 
 model:
   input_type: video
-  masks_to_visualize: ["immediate", "dynamics_predictor"]
-  load_weights: "checkpoints/movi-c.ckpt"
+  masks_to_visualize: ["decoder", "dynamics_predictor"]
+  load_weights: "checkpoints/movi_c.ckpt"
   modules_to_load:
     initializer: initializer
     processor: processor
@@ -42,16 +42,8 @@ model:
   losses:
     loss_dynamics:
       name: DynamicsLoss
-      pred_dims:
-        - 0
-        - ${globals.FEAT_DIM}
-    loss_ss:
-      name: Slot_Slot_Contrastive_Loss
-      pred_key: processor.state
-      temperature: 0.1
-      batch_contrast: true
-      patch_inputs: false
-      keep_input_dim: true
+      pred_key: dynamics_predictor.next_state
+      target_key: processor.state
 
   loss_weights:
     loss_dynamics: 1.0

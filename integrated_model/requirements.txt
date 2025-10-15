@@ -1,0 +1,18 @@
+# Core dependencies
+torch>=1.11.0
+torchvision>=0.12.0
+numpy>=1.21.0
+pillow>=9.0.0
+
+# For SAYCam models
+huggingface-hub>=0.13.4
+
+# Video processing
+opencv-python>=4.5.0
+
+# Optional: for training
+pytorch-lightning>=1.9.0
+tensorboard>=2.8.0
+
+# Optional: for visualization
+matplotlib>=3.5.0

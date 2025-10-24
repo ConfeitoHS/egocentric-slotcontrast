@@ -1,0 +1,292 @@
+# Integrated Model V2: MOVi-C Configuration
+#
+# This configuration extends the MOVi-C setup with STEVE components:
+# - SlotContrast: Temporal consistency (original MOVi-C)
+# - STEVE: dVAE discrete representations + cross-entropy loss
+# - Optional: Silicon-Menagerie ViT (or DINOv2 for MOVi synthetic data)
+#
+# MOVi-C characteristics:
+# - Simpler synthetic scenes with 3-10 objects
+# - 336x336 resolution
+# - Good for initial testing and development
+# - Faster training than MOVi-E
+
+experiment_group: integrated_v2
+experiment_name: movi_c_steve
+
+globals:
+  # Slot configuration (MOVi-C specific)
+  NUM_SLOTS: 11  # Fewer slots for simpler MOVi-C scenes
+  SLOT_DIM: 64  # Smaller dimension for efficiency
+
+  # Feature dimensions
+  DINO_MODEL: vit_small_patch14_dinov2  # ViT-S/14 (smaller, faster)
+  FEAT_DIM: 384  # ViT-S/14 feature dimension
+  NUM_PATCHES: 576  # 24x24 patches for 336x336 image
+
+  # STEVE dVAE configuration
+  VOCAB_SIZE: 4096  # Discrete vocabulary size
+  DVAE_D_MODEL: 64  # Match SLOT_DIM for efficiency
+
+  # Training configuration
+  NUM_GPUS: 1
+  BATCH_SIZE_PER_GPU: 64  # Can use larger batch for MOVi-C
+  TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
+  BASE_LR: 0.0001
+
+  # Component toggles
+  USE_SILICON_VIT: false  # Use DINOv2 for MOVi (synthetic data)
+  SILICON_MODEL: dino_say_vitb14  # Only used if USE_SILICON_VIT=true
+  USE_DVAE: true  # Enable STEVE's dVAE
+  USE_STEVE_DECODER: true  # Enable STEVE's transformer decoder
+
+trainer:
+  max_steps: 100000  # MOVi-C converges faster than MOVi-E
+  log_every_n_steps: 2500
+  val_check_interval: 2500
+  gradient_clip_val: 0.05
+  accelerator: auto
+  devices: ${globals.NUM_GPUS}
+
+checkpoint_every_n_steps: 2500
+
+optimizer:
+  name: Adam
+  lr: 0.0004
+  lr_scheduler:
+    name: exp_decay_with_warmup
+    warmup_steps: 2500
+    decay_steps: ${trainer.max_steps}
+
+model:
+  input_type: video
+  visualize: false  # Enable for debugging: visualize: true
+  visualize_every_n_steps: 10000
+
+  # Enable STEVE components
+  use_dvae: ${globals.USE_DVAE}
+  use_steve_decoder: ${globals.USE_STEVE_DECODER}
+
+  # Gumbel-Softmax temperature schedule (for dVAE)
+  gumbel_start_temp: 1.0
+  gumbel_final_temp: 0.1
+  gumbel_anneal_steps: 10000
+
+  # Loss configuration
+  losses:
+    # SlotContrast: Feature reconstruction
+    loss_featrec:
+      name: MSELoss
+      pred_dims:
+        - 0
+        - ${globals.FEAT_DIM}
+      pred_key: decoder.reconstruction
+      target_key: encoder.backbone_features
+
+    # SlotContrast: Temporal consistency
+    loss_ss:
+      name: Slot_Slot_Contrastive_Loss
+      pred_key: processor.state
+      temperature: 0.1
+      batch_contrast: true
+      patch_inputs: false
+      keep_input_dim: true
+
+    # STEVE: dVAE reconstruction loss
+    loss_dvae_recon:
+      name: DVAEReconstructionLoss
+      pred_key: dvae.reconstruction
+      target_key: video
+      normalize: true
+      reduction: sum
+
+    # STEVE: Cross-entropy loss for discrete tokens
+    loss_steve_ce:
+      name: STEVECrossEntropyLoss
+      pred_key: steve_decoder.cross_entropy
+      target_key: dvae.z_hard
+      reduction: mean
+
+  # Loss weights
+  loss_weights:
+    loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
+    loss_ss: 0.5  # Temporal consistency (SlotContrast)
+    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
+
+  # Slot initializer
+  initializer:
+    name: FixedLearnedInit
+    n_slots: ${globals.NUM_SLOTS}
+    dim: ${globals.SLOT_DIM}
+
+  # Encoder configuration
+  encoder:
+    use_silicon_vit: ${globals.USE_SILICON_VIT}
+
+    backbone:
+      # For MOVi synthetic data, DINOv2 works well
+      name: TimmExtractor  # or SiliconViTExtractor if USE_SILICON_VIT=true
+      model: ${globals.DINO_MODEL}
+      features:
+        - vit_block12
+        - vit_block_keys12
+      frozen: true
+      pretrained: true
+      model_kwargs:
+        dynamic_img_size: true
+
+    output_transform:
+      name: networks.two_layer_mlp
+      inp_dim: ${globals.FEAT_DIM}
+      outp_dim: ${globals.SLOT_DIM}
+      hidden_dim: "${mul: ${globals.FEAT_DIM}, 2}"
+      layer_norm: true
+
+    spatial_flatten: false
+    main_features_key: vit_block12
+
+  # Grouper: Slot Attention
+  grouper:
+    name: SlotAttention
+    inp_dim: ${globals.SLOT_DIM}
+    slot_dim: ${globals.SLOT_DIM}
+    n_iters: 2  # 2 iterations sufficient for MOVi-C
+    use_mlp: true
+    use_gru: true
+
+  # Latent processor for temporal modeling
+  latent_processor:
+    first_step_corrector_args:
+      n_iters: 3
+
+  # Decoder: Feature reconstruction
+  decoder:
+    name: MLPDecoder
+    inp_dim: ${globals.SLOT_DIM}
+    outp_dim: ${globals.FEAT_DIM}
+    hidden_dims: [1024, 1024, 1024]
+    n_patches: ${globals.NUM_PATCHES}
+
+  # Predictor: Temporal dynamics
+  predictor:
+    name: networks.TransformerEncoder
+    dim: ${globals.SLOT_DIM}
+    n_blocks: 1
+    n_heads: 4
+
+  # STEVE dVAE configuration
+  dvae:
+    vocab_size: ${globals.VOCAB_SIZE}
+    img_channels: 3
+
+  # STEVE decoder configuration
+  steve_decoder:
+    vocab_size: ${globals.VOCAB_SIZE}
+    d_model: ${globals.DVAE_D_MODEL}
+    num_decoder_blocks: 4
+    num_decoder_heads: 4
+    dropout: 0.1
+    image_size: 336  # MOVi-C resolution
+
+# Validation metrics (MOVi-C has ground truth segmentations)
+val_metrics:
+  ari:
+    name: VideoARI
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_ari:
+    name: ImageARI
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  mbo:
+    name: VideoIoU
+    matching: overlap
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_mbo:
+    name: ImageIoU
+    matching: overlap
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+
+# MOVi-C Dataset configuration
+dataset:
+  # MOVi-C data shards (download from Google Cloud)
+  # See: https://github.com/google-research/kubric/tree/main/challenges/movi
+  train_shards: "movi_c/movi_c-train-{000000..000304}.tar"
+  val_shards: "movi_c/movi_c-validation-{000000..000007}.tar"
+
+  batch_size: ${globals.BATCH_SIZE_PER_GPU}
+  val_batch_size: 16  # Larger batch for validation
+  val_size: 250  # Number of validation videos
+  num_workers: 4
+  num_val_workers: 2
+
+  # Training data pipeline
+  train_pipeline:
+    video_size: 24  # 24 frames per video
+    chunk_size: 4  # Process 4 frames at a time
+    sample_one_chunk_per_video: true
+    keys: [video]  # Load video only
+    shuffle_size: 512
+    transforms:
+      name: movi_train
+      type: video
+      input_size: 336  # MOVi-C resolution
+      h_flip_prob: 0.5  # Horizontal flip augmentation
+
+  # Validation data pipeline
+  val_pipeline:
+    use_chunks: false  # Use full videos for validation
+    keys: [video, segmentations]  # Load both video and segmentations
+    transforms:
+      name: movi_val
+      type: video
+      input_size: 336
+      num_classes: 11  # MOVi-C has up to 10 objects + background
+
+# Notes for training:
+#
+# 1. Download MOVi-C dataset:
+#    python data/save_movi.py --level c --split train --out-path data/movi_c
+#    python data/save_movi.py --level c --split validation --out-path data/movi_c
+#
+# 2. Train with:
+#    python train_integrated_v2.py configs/integrated_v2_movi_c.yaml \
+#        --data-dir ./data --log-dir ./logs
+#
+# 3. Quick test (1000 steps):
+#    python train_integrated_v2.py configs/integrated_v2_movi_c.yaml \
+#        --data-dir ./data --log-dir ./logs \
+#        trainer.max_steps=1000 \
+#        model.visualize=true
+#
+# 4. Memory optimization (if OOM):
+#    globals.BATCH_SIZE_PER_GPU=32
+#
+# 5. Disable STEVE components for baseline comparison:
+#    globals.USE_DVAE=false \
+#    globals.USE_STEVE_DECODER=false
+#
+# Expected training time:
+# - Single V100: ~18-24 hours (100K steps)
+# - 4x V100: ~6-8 hours
+#
+# Expected results (after 100K steps):
+# - Video ARI: ~65-70%
+# - Video mBO: ~30-35%
+# - Feature reconstruction: ~0.15-0.25
+# - Temporal consistency: ~0.3-0.5
+# - dVAE reconstruction: ~0.05-0.15
+# - Cross-entropy: ~2.0-4.0
+#
+# Comparison with original MOVi-C paper results:
+# - Original SlotContrast: Video ARI ~69.3%, Video mBO ~32.7%
+# - With STEVE components: Similar or better performance + discrete representations

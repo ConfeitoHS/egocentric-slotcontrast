@@ -30,6 +30,14 @@ class ModelConfig:
     masks_to_visualize: Optional[List[str]] = None
     load_weights: Optional[str] = None
     modules_to_load: Optional[Dict[str, str]] = None
+    # Integrated V2: STEVE components
+    use_dvae: bool = False
+    use_steve_decoder: bool = False
+    dvae: Optional[ModuleConfig] = None
+    steve_decoder: Optional[ModuleConfig] = None
+    gumbel_start_temp: float = 1.0
+    gumbel_final_temp: float = 0.1
+    gumbel_anneal_steps: int = 10000
 
 
 @dataclass

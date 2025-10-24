@@ -38,6 +38,9 @@ parser.add_argument(
 parser.add_argument(
     "--use-optimizations", action="store_true", help="Enable Pytorch performance optimizations"
 )
+parser.add_argument(
+    "--bf16", action="store_true", help="Use bfloat16 mixed precision training"
+)
 parser.add_argument("--timeout", help="Stop training after this time (format: DD:HH:MM:SS)")
 parser.add_argument("--data-dir", help="Path to data directory")
 parser.add_argument("--log-dir", default="./logs", help="Path to log directory")
@@ -141,7 +144,7 @@ def _setup_trainer_config(trainer_config: Dict[str, Any]) -> Dict[str, Any]:
         strategy = "ddp_find_unused_parameters_false"
         if "find_unused_parameters" in trainer_config:
             if trainer_config["find_unused_parameters"]:
-                strategy = "ddp"
+                strategy = "ddp_find_unused_parameters_true"
             del trainer_config["find_unused_parameters"]
         log_info(f"Setting distributed strategy to {strategy}.")
         trainer_config["strategy"] = strategy
@@ -219,6 +222,9 @@ def main(args, config_overrides=None):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
+    if args.bf16:
+        log_info("Enabling bfloat16 mixed precision training")
+
     dataset = data.build(config.dataset, data_dir=args.data_dir)
     if args.verbose:
         log_info(str(dataset))
@@ -241,6 +247,14 @@ def main(args, config_overrides=None):
     loggers = _setup_loggers(args, log_path)
     trainer_config = _setup_trainer_config(config.setdefault("trainer", {}))
 
+    # Set precision based on command line argument or config
+    if args.bf16:
+        trainer_config["precision"] = "bf16-mixed"
+        log_info("Using bf16-mixed precision")
+    elif "precision" not in trainer_config:
+        # Default to 32-bit if not specified
+        pass
+    
     # Save the final configuration
     if rank_zero and log_path and not (log_path / "settings.yaml").exists():
         configuration.save_config(log_path / "settings.yaml", config)
@@ -263,7 +277,7 @@ def main(args, config_overrides=None):
         enable_progress_bar=(not args.quiet and not args.no_interactive),
         enable_model_summary=not args.quiet,
         enable_checkpointing="checkpointer" in callbacks,
-        **trainer_config,
+        **trainer_config,   
     )
 
     if ckpt_path is not None:

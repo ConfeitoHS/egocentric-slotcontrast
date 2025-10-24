@@ -1,0 +1,262 @@
+# Integrated Model V2: MOVi-E Configuration (LOW MEMORY)
+#
+# Memory-optimized configuration for systems with limited GPU memory
+# Key optimizations:
+# - Reduced vocabulary size (512 instead of 4096)
+# - Gradient checkpointing enabled
+# - Smaller batch size
+# - Fewer video frames per batch
+
+experiment_group: integrated_v2
+experiment_name: movi_e_steve_lowmem
+
+globals:
+  # Slot configuration (MOVi-E specific)
+  NUM_SLOTS: 15  # More slots for complex MOVi-E scenes
+  SLOT_DIM: 128
+
+  # Feature dimensions
+  DINO_MODEL: vit_base_patch14_dinov2  # DINOv2 (good for synthetic data)
+  FEAT_DIM: 768  # ViT-B/14 feature dimension
+  NUM_PATCHES: 576  # 24x24 patches for 336x336 image
+
+  # STEVE dVAE configuration - REDUCED FOR MEMORY
+  VOCAB_SIZE: 512  # REDUCED from 4096 -> saves significant memory
+  DVAE_D_MODEL: 128  # dVAE model dimension
+
+  # Training configuration
+  NUM_GPUS: 1
+  BATCH_SIZE_PER_GPU: 1  # Start with 1, increase if possible
+  TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
+  BASE_LR: 0.0001
+
+  # Component toggles
+  USE_SILICON_VIT: false  # Use DINOv2 for MOVi (synthetic data)
+  SILICON_MODEL: dino_say_vitb14  # Only used if USE_SILICON_VIT=true
+  USE_DVAE: true  # Enable STEVE's dVAE
+  USE_STEVE_DECODER: true  # Enable STEVE's transformer decoder
+
+trainer:
+  max_steps: 300000  # MOVi-E requires longer training
+  log_every_n_steps: 2500
+  val_check_interval: 2500
+  gradient_clip_val: 0.05
+  accelerator: auto
+  devices: ${globals.NUM_GPUS}
+  precision: bf16-mixed  # Use bfloat16 mixed precision (faster, less memory)
+
+checkpoint_every_n_steps: 2500
+
+optimizer:
+  name: Adam
+  lr: 0.0001  # Reduced for smaller batch size
+  lr_scheduler:
+    name: exp_decay_with_warmup
+    warmup_steps: 2500
+    decay_steps: ${trainer.max_steps}
+
+model:
+  input_type: video
+  visualize: false  # Enable for debugging: visualize: true
+  visualize_every_n_steps: 10000
+  masks_to_visualize: [decoder]  # Which masks to visualize
+
+  # Enable STEVE components
+  use_dvae: ${globals.USE_DVAE}
+  use_steve_decoder: ${globals.USE_STEVE_DECODER}
+
+  # Gumbel-Softmax temperature schedule (for dVAE)
+  gumbel_start_temp: 1.0
+  gumbel_final_temp: 0.1
+  gumbel_anneal_steps: 10000
+
+  # Loss configuration
+  losses:
+    # SlotContrast: Feature reconstruction
+    loss_featrec:
+      name: MSELoss
+      pred_dims:
+        - 0
+        - ${globals.FEAT_DIM}
+      pred_key: decoder.reconstruction
+      target_key: encoder.backbone_features
+
+    # SlotContrast: Temporal consistency
+    loss_ss:
+      name: Slot_Slot_Contrastive_Loss
+      pred_key: processor.state
+      temperature: 0.1
+      batch_contrast: true
+      patch_inputs: false
+      keep_input_dim: true
+
+    # STEVE: dVAE reconstruction loss
+    loss_dvae_recon:
+      name: DVAEReconstructionLoss
+      pred_key: dvae.reconstruction
+      target_key: video
+      normalize: true
+      reduction: sum
+
+    # STEVE: Cross-entropy loss for discrete tokens
+    loss_steve_ce:
+      name: STEVECrossEntropyLoss
+      pred_key: steve_decoder.cross_entropy
+      target_key: dvae.z_hard
+      reduction: mean
+
+  # Loss weights
+  loss_weights:
+    loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
+    loss_ss: 0.5  # Temporal consistency (SlotContrast)
+    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
+
+  # Slot initializer
+  initializer:
+    name: FixedLearnedInit
+    n_slots: ${globals.NUM_SLOTS}
+    dim: ${globals.SLOT_DIM}
+
+  # Encoder configuration
+  encoder:
+    use_silicon_vit: ${globals.USE_SILICON_VIT}
+
+    backbone:
+      name: TimmExtractor
+      model: ${globals.DINO_MODEL}
+      features:
+        - vit_block12
+        - vit_block_keys12
+      frozen: true
+      pretrained: true
+      model_kwargs:
+        dynamic_img_size: true
+
+    output_transform:
+      name: networks.two_layer_mlp
+      inp_dim: ${globals.FEAT_DIM}
+      outp_dim: ${globals.SLOT_DIM}
+      hidden_dim: "${mul: ${globals.FEAT_DIM}, 2}"
+      layer_norm: true
+
+    spatial_flatten: false
+    main_features_key: vit_block12
+
+  # Grouper: Slot Attention
+  grouper:
+    name: SlotAttention
+    inp_dim: ${globals.SLOT_DIM}
+    slot_dim: ${globals.SLOT_DIM}
+    n_iters: 2
+    use_mlp: true
+    use_gru: true
+
+  # Latent processor for temporal modeling
+  latent_processor:
+    first_step_corrector_args:
+      n_iters: 3
+
+  # Decoder: Feature reconstruction
+  decoder:
+    name: MLPDecoder
+    inp_dim: ${globals.SLOT_DIM}
+    outp_dim: ${globals.FEAT_DIM}
+    hidden_dims: [1024, 1024, 1024]
+    n_patches: ${globals.NUM_PATCHES}
+
+  # Predictor: Temporal dynamics
+  predictor:
+    name: networks.TransformerEncoder
+    dim: ${globals.SLOT_DIM}
+    n_blocks: 1
+    n_heads: 4
+
+  # STEVE dVAE configuration - MEMORY OPTIMIZED
+  dvae:
+    vocab_size: ${globals.VOCAB_SIZE}  # Reduced to 512
+    img_channels: 3
+    use_checkpoint: true  # ENABLE gradient checkpointing to save memory
+
+  # STEVE decoder configuration
+  steve_decoder:
+    vocab_size: ${globals.VOCAB_SIZE}  # Match dVAE vocab size
+    d_model: ${globals.DVAE_D_MODEL}
+    num_decoder_blocks: 4
+    num_decoder_heads: 4
+    dropout: 0.1
+    image_size: 336
+
+# Validation metrics
+val_metrics:
+  ari:
+    name: VideoARI
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_ari:
+    name: ImageARI
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  mbo:
+    name: VideoIoU
+    matching: overlap
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_mbo:
+    name: ImageIoU
+    matching: overlap
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+
+# MOVi-E Dataset configuration - REDUCED FOR MEMORY
+dataset:
+  train_shards: "movi_e/movi_e-train-{000000..000304}.tar"
+  val_shards: "movi_e/movi_e-validation-{000000..000007}.tar"
+
+  batch_size: ${globals.BATCH_SIZE_PER_GPU}
+  val_batch_size: 1
+  val_size: 250
+  num_workers: 2  # Reduced workers
+  num_val_workers: 1
+
+  # Training data pipeline - REDUCED FRAMES
+  train_pipeline:
+    video_size: 24
+    chunk_size: 2  # REDUCED from 4 -> process fewer frames at once
+    sample_one_chunk_per_video: true
+    keys: [video]
+    shuffle_size: 512
+    transforms:
+      name: movi_train
+      type: video
+      input_size: 336
+      h_flip_prob: 0.5
+
+  # Validation data pipeline
+  val_pipeline:
+    use_chunks: false
+    keys: [video, segmentations]
+    transforms:
+      name: movi_val
+      type: video
+      input_size: 336
+      num_classes: 24
+
+# Memory optimization notes:
+#
+# 1. VOCAB_SIZE reduced from 4096 to 512 (8x reduction in dVAE channels)
+# 2. Gradient checkpointing enabled for dVAE (trades compute for memory)
+# 3. chunk_size reduced from 4 to 2 frames
+# 4. BATCH_SIZE_PER_GPU = 1 (minimum)
+#
+# If still OOM, try:
+# - Further reduce VOCAB_SIZE to 256
+# - Reduce chunk_size to 1 (but may hurt temporal modeling)
+# - Reduce NUM_SLOTS to 11
+# - Disable STEVE completely: USE_DVAE=false, USE_STEVE_DECODER=false

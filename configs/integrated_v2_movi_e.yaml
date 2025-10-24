@@ -1,0 +1,286 @@
+# Integrated Model V2: MOVi-E Configuration
+#
+# This configuration extends the MOVi-E setup with STEVE components:
+# - SlotContrast: Temporal consistency (original MOVi-E)
+# - STEVE: dVAE discrete representations + cross-entropy loss
+# - Optional: Silicon-Menagerie ViT (or DINOv2 for MOVi synthetic data)
+#
+# MOVi-E characteristics:
+# - Complex synthetic scenes with 10-23 objects
+# - Challenging occlusions and dynamics
+# - 336x336 resolution
+# - Requires more slots (15) than MOVi-C (11)
+
+experiment_group: integrated_v2
+experiment_name: movi_e_steve
+
+globals:
+  # Slot configuration (MOVi-E specific)
+  NUM_SLOTS: 15  # More slots for complex MOVi-E scenes
+  SLOT_DIM: 128
+
+  # Feature dimensions
+  DINO_MODEL: vit_base_patch14_dinov2  # DINOv2 (good for synthetic data)
+  FEAT_DIM: 768  # ViT-B/14 feature dimension
+  NUM_PATCHES: 576  # 24x24 patches for 336x336 image
+
+  # STEVE dVAE configuration
+  VOCAB_SIZE: 4096  # Discrete vocabulary sizea
+  #DVAE_D_MODEL: 128  # dVAE model dimension
+
+  # Training configuration
+  NUM_GPUS: 8
+  BATCH_SIZE_PER_GPU: 8  # Adjust based on GPU memory
+  TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
+  BASE_LR: 0.0001
+
+  # Component toggles
+  USE_SILICON_VIT: false  # Use DINOv2 for MOVi (synthetic data)
+  SILICON_MODEL: dino_say_vitb14  # Only used if USE_SILICON_VIT=true
+  USE_DVAE: true  # Enable STEVE's dVAE
+
+trainer:
+  max_steps: 300000  # MOVi-E requires longer training
+  log_every_n_steps: 2500
+  val_check_interval: 2500
+  gradient_clip_val: 0.05
+  accelerator: auto
+  devices: ${globals.NUM_GPUS}
+  find_unused_parameters: true  # For distributed training stabilit
+  precision: bf16-mixed  # Use bfloat16 mixed precision (faster, less memory)
+
+
+checkpoint_every_n_steps: 2500
+
+optimizer:
+  name: Adam
+  lr: 0.0004  # Scale learning rate by batch size
+  lr_scheduler:
+    name: exp_decay_with_warmup
+    warmup_steps: 2500
+    decay_steps: ${trainer.max_steps}
+
+model:
+  input_type: video
+  visualize: false  # Enable for debugging: visualize: true
+  visualize_every_n_steps: 10000
+  masks_to_visualize: [decoder]  # Which masks to visualize
+
+  # Enable STEVE components
+  use_dvae: ${globals.USE_DVAE}
+
+  # Gumbel-Softmax temperature schedule (for dVAE)
+  gumbel_start_temp: 1.0
+  gumbel_final_temp: 0.1
+  gumbel_anneal_steps: 10000
+
+  # Loss configuration
+  # Combines SlotContrast losses + STEVE losses
+  losses:
+    # SlotContrast: Feature reconstruction
+    loss_featrec:
+      name: MSELoss
+      pred_dims:
+        - 0
+        - ${globals.FEAT_DIM}
+      pred_key: decoder.reconstruction
+      target_key: encoder.backbone_features
+
+    # SlotContrast: Temporal consistency
+    loss_ss:
+      name: Slot_Slot_Contrastive_Loss
+      pred_key: processor.state
+      temperature: 0.1
+      batch_contrast: true
+      patch_inputs: false
+      keep_input_dim: true
+
+    # STEVE: dVAE reconstruction loss
+    # loss_dvae_recon:
+    #   name: DVAEReconstructionLoss
+    #   pred_key: dvae.reconstruction
+    #   target_key: video
+    #   normalize: true
+    #   reduction: sum
+
+    # STEVE: Cross-entropy loss for discrete tokens
+    loss_steve_ce:
+      name: CrossEntropyLoss
+      pred_key: decoder.logits
+      target_key: dvae.z_hard
+
+  # Loss weights - balance different objectives
+  # For MOVi-E, temporal consistency is important due to complex dynamics
+  loss_weights:
+    loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
+    loss_ss: 0.5  # Temporal consistency (SlotContrast)
+    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
+
+  # Slot initializer
+  initializer:
+    name: FixedLearnedInit
+    n_slots: ${globals.NUM_SLOTS}
+    dim: ${globals.SLOT_DIM}
+
+  # Encoder configuration
+  encoder:
+    use_silicon_vit: ${globals.USE_SILICON_VIT}
+
+    backbone:
+      # For MOVi synthetic data, DINOv2 works well
+      # For egocentric videos, set USE_SILICON_VIT: true
+      name: TimmExtractor  # or SiliconViTExtractor if USE_SILICON_VIT=true
+      model: ${globals.DINO_MODEL}
+      features:
+        - vit_block12
+        - vit_block_keys12
+      frozen: true
+      pretrained: true
+      model_kwargs:
+        dynamic_img_size: true
+
+    output_transform:
+      name: networks.two_layer_mlp
+      inp_dim: ${globals.FEAT_DIM}
+      outp_dim: ${globals.SLOT_DIM}
+      hidden_dim: "${mul: ${globals.FEAT_DIM}, 2}"
+      layer_norm: true
+
+    spatial_flatten: false
+    main_features_key: vit_block12
+
+  # Grouper: Slot Attention
+  grouper:
+    name: SlotAttention
+    inp_dim: ${globals.SLOT_DIM}
+    slot_dim: ${globals.SLOT_DIM}
+    n_iters: 2  # MOVi-E: 2 iterations work well
+    use_mlp: true
+    use_gru: true
+
+  # Latent processor for temporal modeling
+  latent_processor:
+    first_step_corrector_args:
+      n_iters: 3  # More iterations for first frame
+
+  # Decoder: Feature reconstruction
+  decoder:
+    name: MLPDecoder
+    inp_dim: ${globals.SLOT_DIM}
+    outp_dim: ${globals.FEAT_DIM}
+    hidden_dims: [1024, 1024, 1024]
+    n_patches: ${globals.NUM_PATCHES}
+    steve: ${globals.USE_DVAE}
+    vocab_size: ${globals.VOCAB_SIZE}
+
+  # Predictor: Temporal dynamics
+  predictor:
+    name: networks.TransformerEncoder
+    dim: ${globals.SLOT_DIM}
+    n_blocks: 1  # MOVi-E: 1 block is sufficient
+    n_heads: 4
+
+  # STEVE dVAE configuration
+  dvae:
+    vocab_size: ${globals.VOCAB_SIZE}
+    img_channels: 3
+
+# Validation metrics (MOVi-E has ground truth segmentations)
+val_metrics:
+  ari:
+    name: VideoARI
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_ari:
+    name: ImageARI
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  mbo:
+    name: VideoIoU
+    matching: overlap
+    ignore_background: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+  image_mbo:
+    name: ImageIoU
+    matching: overlap
+    ignore_background: true
+    video_input: true
+    pred_key: decoder_masks_hard
+    true_key: segmentations
+
+# MOVi-E Dataset configuration
+dataset:
+  # MOVi-E data shards (download from Google Cloud)
+  # See: https://github.com/google-research/kubric/tree/main/challenges/movi
+  train_shards: "movi_e/movi_e-train-{000000..000304}.tar"
+  val_shards: "movi_e/movi_e-validation-{000000..000007}.tar"
+
+  batch_size: ${globals.BATCH_SIZE_PER_GPU}
+  val_batch_size: 4
+  val_size: 250  # Number of validation videos
+  num_workers: 4
+  num_val_workers: 1
+
+  # Training data pipeline
+  train_pipeline:
+    video_size: 24  # 24 frames per video
+    chunk_size: 4  # Process 4 frames at a time
+    sample_one_chunk_per_video: true
+    keys: [video]  # Load video only (segmentations not needed for training)
+    shuffle_size: 512
+    transforms:
+      name: movi_train
+      type: video
+      input_size: 336  # MOVi-E resolution
+      h_flip_prob: 0.5  # Horizontal flip augmentation
+
+  # Validation data pipeline
+  val_pipeline:
+    use_chunks: false  # Use full videos for validation
+    keys: [video, segmentations]  # Load both video and segmentations
+    transforms:
+      name: movi_val
+      type: video
+      input_size: 336
+      num_classes: 24  # MOVi-E has up to 23 objects + background
+
+# Notes for training:
+#
+# 1. Download MOVi-E dataset:
+#    python data/save_movi.py --level e --split train --out-path data/movi_e
+#    python data/save_movi.py --level e --split validation --out-path data/movi_e
+#
+# 2. Train with:
+#    python train_integrated_v2.py configs/integrated_v2_movi_e.yaml \
+#        --data-dir ./data --log-dir ./logs
+#
+# 3. For debugging/quick test:
+#    python train_integrated_v2.py configs/integrated_v2_movi_e.yaml \
+#        --data-dir ./data --log-dir ./logs \
+#        trainer.max_steps=1000 \
+#        model.visualize=true
+#
+# 4. Memory optimization (if OOM):
+#    globals.BATCH_SIZE_PER_GPU=32 \
+#    dataset.train_pipeline.chunk_size=3
+#
+# 5. Disable STEVE components for faster training:
+#    globals.USE_DVAE=false \
+#    globals.USE_STEVE_DECODER=false
+#
+# Expected training time:
+# - Single V100: ~48-60 hours (300K steps)
+# - 4x V100: ~15-20 hours
+#
+# Expected results (after 300K steps):
+# - Video ARI: ~70-75%
+# - Video mBO: ~35-40%
+# - Feature reconstruction: ~0.15-0.25
+# - Temporal consistency: ~0.3-0.5
+# - dVAE reconstruction: ~0.05-0.15
+# - Cross-entropy: ~2.0-4.0

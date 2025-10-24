@@ -13,6 +13,7 @@ globals:
   BASE_LR: 0.0001
 
 trainer:
+  devices: ${globals.NUM_GPUS}
   max_steps: 300000
   log_every_n_steps: 2500
   val_check_interval: 2500

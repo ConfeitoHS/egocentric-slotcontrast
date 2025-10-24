@@ -1,0 +1,221 @@
+# Integrated Model V2: SlotContrast + STEVE + Silicon-Menagerie
+#
+# This configuration combines:
+# 1. SlotContrast framework (temporal consistency via contrastive loss)
+# 2. STEVE components (dVAE, discrete tokens, cross-entropy loss)
+# 3. Silicon-Menagerie pretrained ViT (optional, for SAYCam features)
+#
+# Key features:
+# - Object-centric video understanding with slots
+# - Discrete visual representations via dVAE
+# - Temporal consistency across frames
+# - Pretrained backbone for rich visual features
+
+experiment_group: integrated_v2
+experiment_name: slotcontrast_steve_silicon
+
+globals:
+  # Slot configuration
+  NUM_SLOTS: 7
+  SLOT_DIM: 128
+
+  # Feature dimensions
+  FEAT_DIM: 768  # ViT-B/14 feature dimension
+  NUM_PATCHES: 256  # 16x16 patches for 224x224 image
+
+  # STEVE dVAE configuration
+  VOCAB_SIZE: 4096  # Discrete vocabulary size
+  DVAE_D_MODEL: 128  # dVAE model dimension
+
+  # Training configuration
+  NUM_GPUS: 1
+  BATCH_SIZE_PER_GPU: 16
+  TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
+
+  # Model selection
+  USE_SILICON_VIT: true  # Use silicon-menagerie ViT (set false for DINOv2)
+  SILICON_MODEL: dino_say_vitb14  # Silicon-menagerie model name
+
+  USE_DVAE: true  # Enable STEVE's dVAE
+  USE_STEVE_DECODER: true  # Enable STEVE's transformer decoder
+
+trainer:
+  max_steps: 100000
+  log_every_n_steps: 500
+  val_check_interval: 2500
+  gradient_clip_val: 0.05
+  accelerator: auto
+  devices: ${globals.NUM_GPUS}
+
+checkpoint_every_n_steps: 2500
+
+optimizer:
+  name: Adam
+  lr: 0.0004
+  lr_scheduler:
+    name: exp_decay_with_warmup
+    warmup_steps: 2500
+    decay_steps: ${trainer.max_steps}
+
+model:
+  input_type: video
+  visualize: true
+  visualize_every_n_steps: 5000
+
+  # Enable STEVE components
+  use_dvae: ${globals.USE_DVAE}
+  use_steve_decoder: ${globals.USE_STEVE_DECODER}
+
+  # Gumbel-Softmax temperature schedule (for dVAE)
+  gumbel_start_temp: 1.0
+  gumbel_final_temp: 0.1
+  gumbel_anneal_steps: 10000
+
+  # Loss configuration
+  # Combines SlotContrast losses + STEVE losses
+  losses:
+    # SlotContrast: Feature reconstruction
+    loss_featrec:
+      name: MSELoss
+      pred_dims:
+        - 0
+        - ${globals.FEAT_DIM}
+      pred_key: decoder.reconstruction
+      target_key: encoder.backbone_features
+
+    # SlotContrast: Temporal consistency
+    loss_ss:
+      name: Slot_Slot_Contrastive_Loss
+      pred_key: processor.state
+      temperature: 0.1
+      batch_contrast: true
+      patch_inputs: false
+      keep_input_dim: true
+
+    # STEVE: dVAE reconstruction loss
+    loss_dvae_recon:
+      name: DVAEReconstructionLoss
+      pred_key: dvae.reconstruction
+      target_key: video
+      normalize: true
+      reduction: sum
+
+    # STEVE: Cross-entropy loss for discrete tokens
+    loss_steve_ce:
+      name: STEVECrossEntropyLoss
+      pred_key: steve_decoder.cross_entropy
+      target_key: dvae.z_hard
+      reduction: mean
+
+  # Loss weights - balance different objectives
+  loss_weights:
+    loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
+    loss_ss: 0.5  # Temporal consistency (SlotContrast)
+    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
+
+  # Slot initializer
+  initializer:
+    name: FixedLearnedInit
+    n_slots: ${globals.NUM_SLOTS}
+    dim: ${globals.SLOT_DIM}
+
+  # Encoder configuration
+  encoder:
+    use_silicon_vit: ${globals.USE_SILICON_VIT}
+
+    backbone:
+      # If USE_SILICON_VIT is true, this uses silicon-menagerie
+      # Otherwise uses standard TimmExtractor
+      name: SiliconViTExtractor
+      model: ${globals.SILICON_MODEL}
+      frozen: true
+      features:
+        - vit_block12
+
+    output_transform:
+      name: networks.two_layer_mlp
+      inp_dim: ${globals.FEAT_DIM}
+      outp_dim: ${globals.SLOT_DIM}
+      hidden_dim: "${mul: ${globals.FEAT_DIM}, 2}"
+      layer_norm: true
+
+    spatial_flatten: false
+    main_features_key: vit_block12
+
+  # Grouper: Slot Attention
+  grouper:
+    name: SlotAttention
+    inp_dim: ${globals.SLOT_DIM}
+    slot_dim: ${globals.SLOT_DIM}
+    n_iters: 3
+    use_mlp: true
+    use_gru: true
+
+  # Latent processor for temporal modeling
+  latent_processor:
+    first_step_corrector_args:
+      n_iters: 3
+
+  # Decoder: Feature reconstruction
+  decoder:
+    name: MLPDecoder
+    inp_dim: ${globals.SLOT_DIM}
+    outp_dim: ${globals.FEAT_DIM}
+    hidden_dims: [1024, 1024, 1024]
+    n_patches: ${globals.NUM_PATCHES}
+
+  # Predictor: Temporal dynamics
+  predictor:
+    name: networks.TransformerEncoder
+    dim: ${globals.SLOT_DIM}
+    n_blocks: 2
+    n_heads: 4
+
+  # STEVE dVAE configuration
+  dvae:
+    vocab_size: ${globals.VOCAB_SIZE}
+    img_channels: 3
+
+  # STEVE decoder configuration
+  steve_decoder:
+    vocab_size: ${globals.VOCAB_SIZE}
+    d_model: ${globals.DVAE_D_MODEL}
+    num_decoder_blocks: 4
+    num_decoder_heads: 4
+    dropout: 0.1
+    image_size: 224
+
+# Dataset configuration
+dataset:
+  name: SAYCAMDataModule
+
+  # UPDATE THESE PATHS
+  json_dir: "/path/to/saycam/json"
+  img_dir: "/path/to/saycam/frames"
+
+  img_size: 224
+  ep_length: 8  # Video clip length
+  batch_size: ${globals.BATCH_SIZE_PER_GPU}
+  num_workers: 4
+
+  # Data augmentation
+  augmentation:
+    random_crop: false
+    random_horizontal_flip: true
+    color_jitter: false
+
+# Optional: Validation metrics
+# Uncomment if you have ground truth segmentations
+# val_metrics:
+#   ari:
+#     name: VideoARI
+#     ignore_background: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations
+#   mbo:
+#     name: VideoIoU
+#     matching: overlap
+#     ignore_background: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations

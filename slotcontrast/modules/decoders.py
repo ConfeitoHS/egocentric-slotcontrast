@@ -51,7 +51,10 @@ class MLPDecoder(nn.Module):
         activation: str = "relu",
         eval_output_size: Optional[Tuple[int]] = None,
         frozen: bool = False,
+        steve: bool = False,
+        vocab_size: Optional[int] = None,
     ):
+        print("steve", steve)
         super().__init__()
         self.outp_dim = outp_dim
         self.n_patches = n_patches
@@ -63,6 +66,11 @@ class MLPDecoder(nn.Module):
         self.pos_emb = nn.Parameter(torch.randn(1, 1, n_patches, inp_dim) * inp_dim**-0.5)
         if frozen:
             self.pos_emb.requires_grad = False
+        self.steve = steve
+        if steve:
+            if vocab_size is None:
+                raise ValueError("vocab_size must be specified when steve is True")
+            self.pred = networks.MLP(outp_dim, vocab_size, [], activation=activation, frozen=frozen)
 
     def forward(self, slots: torch.Tensor) -> Dict[str, torch.Tensor]:
         bs, n_slots, dims = slots.shape
@@ -83,6 +91,8 @@ class MLPDecoder(nn.Module):
 
         masks = torch.softmax(alpha, dim=1)
         recon = torch.sum(recons * masks, dim=1)
+        if self.steve:
+            return {"reconstruction": recon, "masks": masks.squeeze(-1), "logits": self.pred(recon)}
 
         return {"reconstruction": recon, "masks": masks.squeeze(-1)}
 
@@ -99,6 +109,7 @@ class SpatialBroadcastDecoder(nn.Module):
         backbone_dim: Optional[int] = None,
         pos_embed: Optional[nn.Module] = None,
         output_transform: Optional[nn.Module] = None,
+
     ):
         super().__init__()
         self.outp_dim = outp_dim

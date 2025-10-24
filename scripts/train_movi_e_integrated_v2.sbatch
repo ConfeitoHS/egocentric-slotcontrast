@@ -39,7 +39,6 @@ mkdir -p logs
 CONFIG="configs/integrated_v2_movi_e.yaml"
 DATA_DIR="./data"
 LOG_DIR="./logs/movi_e_slotcontrast"
-
 echo "========================================="
 echo "Training Configuration:"
 echo "Config: $CONFIG"

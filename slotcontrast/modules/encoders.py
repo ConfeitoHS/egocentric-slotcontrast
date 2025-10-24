@@ -1,4 +1,6 @@
 from typing import Any, Dict, List, Optional, Union
+import sys
+from pathlib import Path
 
 import einops
 import timm
@@ -9,9 +11,42 @@ from torch import nn
 from slotcontrast.modules import utils
 from slotcontrast.utils import config_as_kwargs, make_build_fn
 
+# Import silicon-menagerie vision transformer DINO MUGS
+SILICON_PATH = Path(__file__).parent.parent.parent.parent / 'silicon-menagerie'
+if SILICON_PATH.exists():
+    sys.path.insert(0, str(SILICON_PATH))
+
+try:
+    from utils import load_model
+    SILICON_DINO_AVAILABLE = True
+except ImportError:
+    SILICON_DINO_AVAILABLE = False
+    print("Warning: silicon-menagerie vision_transformer_dino_mugs not available")
+
+
+
 
 @make_build_fn(__name__, "encoder")
 def build(config, name: str):
+    if config.use_silicon_vit:
+        model_name = config.backbone.model
+        model = load_model(model_name)
+        pos_embed = None
+        if config.get("pos_embed"):
+            pos_embed = utils.build_module(config.pos_embed)
+
+        output_transform = None
+        if config.get("output_transform"):
+            output_transform = utils.build_module(config.output_transform)
+
+        return FrameEncoder(
+            backbone=model,
+            pos_embed=pos_embed,
+            output_transform=output_transform,
+            **config_as_kwargs(config, ("use_silicon_vit","backbone", "pos_embed", "output_transform")
+                               )
+        )
+
     if name == "FrameEncoder":
         pos_embed = None
         if config.get("pos_embed"):

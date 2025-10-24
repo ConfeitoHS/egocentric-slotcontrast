@@ -2,6 +2,7 @@
 Silicon-Menagerie ViT Backbone
 
 Integrates pretrained models from silicon-menagerie as encoder backbones.
+Can load from local path or Hugging Face Hub.
 """
 
 import sys
@@ -21,7 +22,14 @@ try:
     SILICON_AVAILABLE = True
 except ImportError:
     SILICON_AVAILABLE = False
-    print("Warning: silicon-menagerie not available. Install or check path.")
+    print("Warning: silicon-menagerie not available locally. Will try Hugging Face Hub.")
+
+# Try to import timm for HF Hub loading
+try:
+    import timm
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
 
 
 class SiliconViTBackbone(nn.Module):
@@ -38,6 +46,7 @@ class SiliconViTBackbone(nn.Module):
         frozen: bool = True,
         extract_cls_token: bool = False,
         layer_index: Optional[int] = None,
+        hf_hub_id: Optional[str] = None,
     ):
         """
         Args:
@@ -45,14 +54,10 @@ class SiliconViTBackbone(nn.Module):
             frozen: Whether to freeze the backbone
             extract_cls_token: Whether to include CLS token in output
             layer_index: Which layer to extract features from (None = last layer)
+            hf_hub_id: Hugging Face Hub model ID (e.g., 'facebook/dinov2-base')
+                      If provided, loads from HF Hub instead of local silicon-menagerie
         """
         super().__init__()
-
-        if not SILICON_AVAILABLE:
-            raise ImportError(
-                "silicon-menagerie not available. "
-                "Ensure repository exists at: " + str(SILICON_PATH)
-            )
 
         self.model_name = model_name
         self.frozen = frozen
@@ -60,8 +65,20 @@ class SiliconViTBackbone(nn.Module):
         self.layer_index = layer_index
 
         # Load pretrained model
-        print(f"Loading silicon-menagerie model: {model_name}")
-        self.backbone = load_saycam_model(model_name)
+        if hf_hub_id:
+            # Load from Hugging Face Hub
+            print(f"Loading model from Hugging Face Hub: {hf_hub_id}")
+            self.backbone = self._load_from_hf_hub(hf_hub_id)
+        else:
+            # Load from local silicon-menagerie
+            if not SILICON_AVAILABLE:
+                raise ImportError(
+                    "silicon-menagerie not available. "
+                    "Ensure repository exists at: " + str(SILICON_PATH) +
+                    " or provide hf_hub_id to load from Hugging Face Hub"
+                )
+            print(f"Loading silicon-menagerie model: {model_name}")
+            self.backbone = load_saycam_model(model_name)
 
         # Freeze if requested
         if frozen:
@@ -71,6 +88,38 @@ class SiliconViTBackbone(nn.Module):
 
         # Determine output dimension
         self._determine_output_dim()
+
+    def _load_from_hf_hub(self, hf_hub_id: str) -> nn.Module:
+        """Load model from Hugging Face Hub using timm or transformers"""
+        if not TIMM_AVAILABLE:
+            raise ImportError("timm is required to load models from Hugging Face Hub")
+
+        # Try to load with timm first
+        try:
+            # If hf_hub_id doesn't start with 'hf-hub:', add it
+            if not hf_hub_id.startswith('hf-hub:'):
+                hf_hub_id = f'hf-hub:{hf_hub_id}'
+
+            model = timm.create_model(hf_hub_id, pretrained=True)
+            print(f"Successfully loaded {hf_hub_id} via timm")
+            return model
+        except Exception as e:
+            print(f"Failed to load via timm: {e}")
+
+            # Fallback: try transformers library
+            try:
+                from transformers import AutoModel
+                # Remove 'hf-hub:' prefix for transformers
+                hub_id = hf_hub_id.replace('hf-hub:', '')
+                model = AutoModel.from_pretrained(hub_id)
+                print(f"Successfully loaded {hub_id} via transformers")
+                return model
+            except Exception as e2:
+                raise ImportError(
+                    f"Failed to load model from Hugging Face Hub.\n"
+                    f"Timm error: {e}\n"
+                    f"Transformers error: {e2}"
+                )
 
     def _determine_output_dim(self):
         """Determine the output feature dimension"""
@@ -145,6 +194,7 @@ class SiliconViTExtractor(nn.Module):
         frozen: bool = True,
         extract_cls_token: bool = False,
         features: Optional[list] = None,  # For compatibility with TimmExtractor
+        hf_hub_id: Optional[str] = None,  # Hugging Face Hub model ID
     ):
         """
         Args:
@@ -152,6 +202,7 @@ class SiliconViTExtractor(nn.Module):
             frozen: Whether to freeze weights
             extract_cls_token: Whether to include CLS token
             features: Feature names to extract (for compatibility, not used)
+            hf_hub_id: Hugging Face Hub model ID (e.g., 'facebook/dinov2-base')
         """
         super().__init__()
 
@@ -159,6 +210,7 @@ class SiliconViTExtractor(nn.Module):
             model_name=model,
             frozen=frozen,
             extract_cls_token=extract_cls_token,
+            hf_hub_id=hf_hub_id,
         )
 
         self.feature_dim = self.backbone.feature_dim
@@ -193,12 +245,15 @@ def build_silicon_vit(config) -> SiliconViTExtractor:
         frozen: bool (default: True)
         extract_cls_token: bool (default: False)
         features: list (optional, for compatibility)
+        hf_hub_id: str (optional, e.g., 'facebook/dinov2-base')
+                   If provided, loads from Hugging Face Hub
     """
     return SiliconViTExtractor(
         model=config.get('model', 'dino_say_vitb14'),
         frozen=config.get('frozen', True),
         extract_cls_token=config.get('extract_cls_token', False),
         features=config.get('features', None),
+        hf_hub_id=config.get('hf_hub_id', None),
     )
 
 

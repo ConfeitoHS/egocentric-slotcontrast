@@ -12,34 +12,34 @@
 # - Requires more slots (15) than MOVi-C (11)
 
 experiment_group: integrated_v2
-experiment_name: movi_e_steve
+experiment_name: saycam_s_steve
 
 globals:
   # Slot configuration (MOVi-E specific)
-  NUM_SLOTS: 15  # More slots for complex MOVi-E scenes
-  SLOT_DIM: 128
+  NUM_SLOTS: 11  # More slots for complex MOVi-E scenes
+  SLOT_DIM: 192
 
   # Feature dimensions
-  DINO_MODEL: vit_base_patch14_dinov2  # DINOv2 (good for synthetic data)
+  DINO_MODEL: dino_s_vitb14  # DINOv2 (good for synthetic data)
   FEAT_DIM: 768  # ViT-B/14 feature dimension
-  NUM_PATCHES: 576  # 24x24 patches for 336x336 image
+  NUM_PATCHES: 256  # 24x24 patches for 336x336 image
 
   # STEVE dVAE configuration
   VOCAB_SIZE: 4096  # Discrete vocabulary sizea
   #DVAE_D_MODEL: 128  # dVAE model dimension
 
   # Training configuration
-  NUM_GPUS: 8
-  BATCH_SIZE_PER_GPU: 8  # Adjust based on GPU memory
+  NUM_GPUS: 4
+  BATCH_SIZE_PER_GPU: 16  # Adjust based on GPU memory
   TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
   BASE_LR: 0.0001
 
   # Component toggles
   USE_SILICON_VIT: true
   USE_DVAE: true  # Enable STEVE's dVAE
- 
+
 trainer:
-  max_steps: 300000  # MOVi-E requires longer training
+  max_steps: 100000  # MOVi-E requires longer training
   log_every_n_steps: 2500
   val_check_interval: 2500
   gradient_clip_val: 0.05
@@ -47,9 +47,6 @@ trainer:
   devices: ${globals.NUM_GPUS}
   find_unused_parameters: true  # For distributed training stabilit
   precision: bf16-mixed  # Use bfloat16 mixed precision (faster, less memory)
-
-
-checkpoint_every_n_steps: 2500
 
 optimizer:
   name: Adam
@@ -113,7 +110,7 @@ model:
   loss_weights:
     loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
     loss_ss: 0.5  # Temporal consistency (SlotContrast)
-    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    #loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
     loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
 
   # Slot initializer
@@ -125,11 +122,10 @@ model:
   # Encoder configuration
   encoder:
     use_silicon_vit: ${globals.USE_SILICON_VIT}
-
     backbone:
       # For MOVi synthetic data, DINOv2 works well
       # For egocentric videos, set USE_SILICON_VIT: true
-      name: TimmExtractor
+      name: TimmExtractor  # or SiliconViTExtractor if USE_SILICON_VIT=true
       model: ${globals.DINO_MODEL}
       features:
         - vit_block12
@@ -154,7 +150,7 @@ model:
     name: SlotAttention
     inp_dim: ${globals.SLOT_DIM}
     slot_dim: ${globals.SLOT_DIM}
-    n_iters: 2  # MOVi-E: 2 iterations work well
+    n_iters: 3  
     use_mlp: true
     use_gru: true
 
@@ -186,68 +182,41 @@ model:
     img_channels: 3
 
 # Validation metrics (MOVi-E has ground truth segmentations)
-val_metrics:
-  ari:
-    name: VideoARI
-    ignore_background: true
-    pred_key: decoder_masks_hard
-    true_key: segmentations
-  image_ari:
-    name: ImageARI
-    ignore_background: true
-    video_input: true
-    pred_key: decoder_masks_hard
-    true_key: segmentations
-  mbo:
-    name: VideoIoU
-    matching: overlap
-    ignore_background: true
-    pred_key: decoder_masks_hard
-    true_key: segmentations
-  image_mbo:
-    name: ImageIoU
-    matching: overlap
-    ignore_background: true
-    video_input: true
-    pred_key: decoder_masks_hard
-    true_key: segmentations
+# val_metrics:
+#   ari:
+#     name: VideoARI
+#     ignore_background: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations
+#   image_ari:
+#     name: ImageARI
+#     ignore_background: true
+#     video_input: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations
+#   mbo:
+#     name: VideoIoU
+#     matching: overlap
+#     ignore_background: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations
+#   image_mbo:
+#     name: ImageIoU
+#     matching: overlap
+#     ignore_background: true
+#     video_input: true
+#     pred_key: decoder_masks_hard
+#     true_key: segmentations
 
 # MOVi-E Dataset configuration
 dataset:
-  # MOVi-E data shards (download from Google Cloud)
-  # See: https://github.com/google-research/kubric/tree/main/challenges/movi
-  train_shards: "movi_e/movi_e-train-{000000..000304}.tar"
-  val_shards: "movi_e/movi_e-validation-{000000..000007}.tar"
-
-  batch_size: ${globals.BATCH_SIZE_PER_GPU}
-  val_batch_size: 4
-  val_size: 250  # Number of validation videos
-  num_workers: 4
-  num_val_workers: 1
-
-  # Training data pipeline
-  train_pipeline:
-    video_size: 24  # 24 frames per video
-    chunk_size: 4  # Process 4 frames at a time
-    sample_one_chunk_per_video: true
-    keys: [video]  # Load video only (segmentations not needed for training)
-    shuffle_size: 512
-    transforms:
-      name: movi_train
-      type: video
-      input_size: 336  # MOVi-E resolution
-      h_flip_prob: 0.5  # Horizontal flip augmentation
-
-  # Validation data pipeline
-  val_pipeline:
-    use_chunks: false  # Use full videos for validation
-    keys: [video, segmentations]  # Load both video and segmentations
-    transforms:
-      name: movi_val
-      type: video
-      input_size: 336
-      num_classes: 24  # MOVi-E has up to 23 objects + background
-
+  name: SAYCAMDataModule
+  json_dir: "/home/wz3008/steve/"
+  img_dir: "/saycam_transcript_5fps"
+  img_size: 224
+  ep_length: 4
+  batch_size: 32
+  num_workers: 2
 # Notes for training:
 #
 # 1. Download MOVi-E dataset:

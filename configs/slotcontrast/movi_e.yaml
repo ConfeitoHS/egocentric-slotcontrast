@@ -7,8 +7,8 @@ globals:
   DINO_MODEL: vit_base_patch14_dinov2
   FEAT_DIM: 768
   NUM_PATCHES: 576
-  NUM_GPUS: 1
-  BATCH_SIZE_PER_GPU: 64
+  NUM_GPUS: 8
+  BATCH_SIZE_PER_GPU: 8
   TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
   BASE_LR: 0.0001
 
@@ -18,6 +18,7 @@ trainer:
   log_every_n_steps: 2500
   val_check_interval: 2500
   gradient_clip_val: 0.05
+  precision: bf16-mixed
 
 optimizer:
   name: Adam

@@ -28,7 +28,8 @@ except ImportError:
 
 @make_build_fn(__name__, "encoder")
 def build(config, name: str):
-    if config.use_silicon_vit:
+    
+    if config.get("use_silicon_vit",False):
         model_name = config.backbone.model
         model = load_model(model_name)
         pos_embed = None

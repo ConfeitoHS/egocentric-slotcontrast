@@ -148,7 +148,6 @@ def _setup_trainer_config(trainer_config: Dict[str, Any]) -> Dict[str, Any]:
             del trainer_config["find_unused_parameters"]
         log_info(f"Setting distributed strategy to {strategy}.")
         trainer_config["strategy"] = strategy
-
     return trainer_config
 
 

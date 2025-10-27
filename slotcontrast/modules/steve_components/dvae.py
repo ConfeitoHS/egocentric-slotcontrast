@@ -64,7 +64,7 @@ class dVAE(nn.Module):
     Used for learning discrete visual representations.
     """
 
-    def __init__(self, vocab_size: int = 4096, img_channels: int = 3, use_checkpoint: bool = False):
+    def __init__(self, vocab_size: int = 4096, img_channels: int = 3, use_checkpoint: bool = False, encode_only=False):
         """
         Args:
             vocab_size: Size of discrete vocabulary
@@ -89,22 +89,23 @@ class dVAE(nn.Module):
             Conv2dBlock(64, 64, 1, 1),
             conv2d(64, vocab_size, 1)  # -> vocab_size channels
         )
-
+        self.encode_only = encode_only
+        if not encode_only:
         # Decoder: Discrete tokens -> Image
-        self.decoder = nn.Sequential(
-            Conv2dBlock(vocab_size, 64, 1),
-            Conv2dBlock(64, 64, 3, 1, 1),
-            Conv2dBlock(64, 64, 1, 1),
-            Conv2dBlock(64, 64, 1, 1),
-            Conv2dBlock(64, 64 * 7 * 7, 1),
-            nn.PixelShuffle(7),  # *7
-            Conv2dBlock(64, 64, 3, 1, 1),
-            Conv2dBlock(64, 64, 1, 1),
-            Conv2dBlock(64, 64, 1, 1),
-            Conv2dBlock(64, 64 * 2 * 2, 1),
-            nn.PixelShuffle(2),  # *2
-            conv2d(64, img_channels, 1),
-        )
+            self.decoder = nn.Sequential(
+                Conv2dBlock(vocab_size, 64, 1),
+                Conv2dBlock(64, 64, 3, 1, 1),
+                Conv2dBlock(64, 64, 1, 1),
+                Conv2dBlock(64, 64, 1, 1),
+                Conv2dBlock(64, 64 * 7 * 7, 1),
+                nn.PixelShuffle(7),  # *7
+                Conv2dBlock(64, 64, 3, 1, 1),
+                Conv2dBlock(64, 64, 1, 1),
+                Conv2dBlock(64, 64, 1, 1),
+                Conv2dBlock(64, 64 * 2 * 2, 1),
+                nn.PixelShuffle(2),  # *2
+                conv2d(64, img_channels, 1),
+            )
 
     def encode(self, images: torch.Tensor, tau: float = 1.0, hard: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -158,6 +159,14 @@ class dVAE(nn.Module):
             z_logits, z_soft = self.encode(images, tau, hard)
 
         z_hard = gumbel_softmax(z_logits, tau, True, dim=1).detach()
+
+        if self.encode_only:
+            return {
+                'z_logits': z_logits,
+                'z_soft': z_soft,
+                'z_hard': z_hard
+            }
+        
         if self.use_checkpoint and self.training:
             from torch.utils.checkpoint import checkpoint
             reconstruction = checkpoint(self.decode, z_soft, use_reentrant=False)

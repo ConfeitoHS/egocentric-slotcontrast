@@ -35,8 +35,9 @@ globals:
   BASE_LR: 0.0001
 
   # Component toggles
-  USE_SILICON_VIT: true
+  USE_SILICON_VIT: false
   USE_DVAE: true  # Enable STEVE's dVAE
+  DVAE_ENCODE_ONLY: true
  
 trainer:
   max_steps: 300000  # MOVi-E requires longer training
@@ -184,6 +185,7 @@ model:
   dvae:
     vocab_size: ${globals.VOCAB_SIZE}
     img_channels: 3
+    encode_only: ${globals.DVAE_ENCODE_ONLY}
 
 # Validation metrics (MOVi-E has ground truth segmentations)
 val_metrics:

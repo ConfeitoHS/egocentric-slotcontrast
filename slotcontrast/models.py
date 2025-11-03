@@ -290,6 +290,7 @@ def build(
             vocab_size=dvae_config.get('vocab_size', 4096),
             img_channels=dvae_config.get('img_channels', 3),
             use_checkpoint=dvae_config.get('use_checkpoint', False),
+            encode_only=dvae_config.get('encode_only', False),
         )
         # Count parameters
         dvae_params = sum(p.numel() for p in dvae_module.parameters())
@@ -366,17 +367,18 @@ def build(
         loss_fns = {}
         for name, loss_config in model_config.losses.items():
             # Handle STEVE losses
-            # if loss_config.get('name') == 'DVAEReconstructionLoss':
-            #     # Skip if dVAE is not enabled
-            #     if not dvae_module:
-            #         print(f"Skipping {name} because dVAE is not enabled")
-            #         continue
-            #     loss_fns[name] = DVAEReconstructionLoss(
-            #         pred_key=loss_config.get('pred_key', 'dvae.reconstruction'),
-            #         target_key=loss_config.get('target_key', input_type),
-            #         normalize=loss_config.get('normalize', True),
-            #         reduction=loss_config.get('reduction', 'mean'),
-            #     )
+            if name == 'loss_dvae_recon' :
+                # Skip if dVAE is not enabled
+                if not dvae_module:
+                    print(f"Skipping {name} because dVAE is not enabled")
+                    continue
+                loss_fns[name] = DVAEReconstructionLoss(
+                    pred_key=loss_config.get('pred_key', 'dvae.reconstruction'),
+                    target_key=loss_config.get('target_key', input_type),
+                    normalize=loss_config.get('normalize', True),
+                    reduction=loss_config.get('reduction', 'mean'),
+                )
+                continue
             # elif loss_config.get('name') == 'STEVECrossEntropyLoss':
             #     # Skip if STEVE decoder is not enabled
             #     if not dvae_module:
@@ -391,10 +393,10 @@ def build(
             # Standard SlotContrast losses
             loss_fns[name] = losses.build({**loss_defaults, **loss_config})
 
-        loss_fns = {
-            name: losses.build({**loss_defaults, **loss_config})
-            for name, loss_config in model_config.losses.items()
-        }
+        # loss_fns = {
+        #     name: losses.build({**loss_defaults, **loss_config})
+        #     for name, loss_config in model_config.losses.items()
+        # }
 
     if model_config.mask_resizers:
         mask_resizers = {
@@ -514,6 +516,7 @@ class ObjectCentricModel(pl.LightningModule):
                 k: loss for k, loss in loss_weights.items() if loss_weights[k] != 0.0
             }
             self.loss_fns = nn.ModuleDict(loss_fns_filtered)
+            print(self.loss_fns.keys())
             self.loss_weights = loss_weights_filtered
         else:
             self.loss_fns = nn.ModuleDict(loss_fns)
@@ -567,7 +570,7 @@ class ObjectCentricModel(pl.LightningModule):
 
         return self.optimizer_builder(modules)
 
-    def forward(self, inputs: Dict[str, Any], verbose_shapes: bool = False) -> Dict[str, Any]:
+    def forward(self, inputs: Dict[str, Any], verbose_shapes: bool = False,inference=False) -> Dict[str, Any]:
         import gc
 
         encoder_input = inputs[self.input_key]  # batch [x n_frames] x n_channels x height x width
@@ -610,7 +613,8 @@ class ObjectCentricModel(pl.LightningModule):
                 print('predicted_slots', predicted_slots.shape)
                 for key, value in decoded_predicted_slots.items():
                     print(f'\tdecoded_predicted_slots[{key}]', value.shape)
-
+        if inference:
+            return outputs
         # dVAE components processing
         if self.dvae is not None:
             # Clear cache before STEVE components (memory-intensive)

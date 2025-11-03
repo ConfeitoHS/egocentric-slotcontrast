@@ -12,7 +12,7 @@
 # - Requires more slots (15) than MOVi-C (11)
 
 experiment_group: integrated_v2
-experiment_name: saycam_s_steve
+experiment_name: saycam_s_steve_b64_dvaerecon
 
 globals:
   # Slot configuration (MOVi-E specific)
@@ -29,23 +29,24 @@ globals:
   #DVAE_D_MODEL: 128  # dVAE model dimension
 
   # Training configuration
-  NUM_GPUS: 4
-  BATCH_SIZE_PER_GPU: 16  # Adjust based on GPU memory
+  NUM_GPUS: 2
+  BATCH_SIZE_PER_GPU: 32  # Adjust based on GPU memory
   TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
   BASE_LR: 0.0001
 
   # Component toggles
   USE_SILICON_VIT: true
   USE_DVAE: true  # Enable STEVE's dVAE
+  DVAE_ENCODE_ONLY: false
 
 trainer:
-  max_steps: 100000  # MOVi-E requires longer training
-  log_every_n_steps: 2500
-  val_check_interval: 2500
+  max_steps: 30000  # MOVi-E requires longer training
+  log_every_n_steps: 50
+  val_check_interval: 1000
   gradient_clip_val: 0.05
   accelerator: auto
   devices: ${globals.NUM_GPUS}
-  find_unused_parameters: true  # For distributed training stabilit
+  find_unused_parameters: false  # For distributed training stabilit
   precision: bf16-mixed  # Use bfloat16 mixed precision (faster, less memory)
 
 optimizer:
@@ -60,7 +61,7 @@ model:
   input_type: video
   visualize: false  # Enable for debugging: visualize: true
   visualize_every_n_steps: 10000
-  masks_to_visualize: [decoder]  # Which masks to visualize
+  #masks_to_visualize: [decoder]  # Which masks to visualize
 
   # Enable STEVE components
   use_dvae: ${globals.USE_DVAE}
@@ -68,7 +69,7 @@ model:
   # Gumbel-Softmax temperature schedule (for dVAE)
   gumbel_start_temp: 1.0
   gumbel_final_temp: 0.1
-  gumbel_anneal_steps: 10000
+  gumbel_anneal_steps: 5000
 
   # Loss configuration
   # Combines SlotContrast losses + STEVE losses
@@ -92,12 +93,11 @@ model:
       keep_input_dim: true
 
     # STEVE: dVAE reconstruction loss
-    # loss_dvae_recon:
-    #   name: DVAEReconstructionLoss
-    #   pred_key: dvae.reconstruction
-    #   target_key: video
-    #   normalize: true
-    #   reduction: sum
+    loss_dvae_recon:
+      name: DVAEReconstructionLoss
+      pred_key: dvae.reconstruction
+      target_key: video
+      normalize: true
 
     # STEVE: Cross-entropy loss for discrete tokens
     loss_steve_ce:
@@ -110,7 +110,7 @@ model:
   loss_weights:
     loss_featrec: 1.0  # Feature reconstruction (SlotContrast)
     loss_ss: 0.5  # Temporal consistency (SlotContrast)
-    #loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
+    loss_dvae_recon: 0.5  # dVAE reconstruction (STEVE)
     loss_steve_ce: 1.0  # Discrete token prediction (STEVE)
 
   # Slot initializer
@@ -180,6 +180,7 @@ model:
   dvae:
     vocab_size: ${globals.VOCAB_SIZE}
     img_channels: 3
+    encode_only: ${globals.DVAE_ENCODE_ONLY}
 
 # Validation metrics (MOVi-E has ground truth segmentations)
 # val_metrics:
@@ -211,11 +212,11 @@ model:
 # MOVi-E Dataset configuration
 dataset:
   name: SAYCAMDataModule
-  json_dir: "/home/wz3008/steve/"
+  json_dir: "/home/hl6722/egocentric-slotcontrast"
   img_dir: "/saycam_transcript_5fps"
   img_size: 224
   ep_length: 4
-  batch_size: 32
+  batch_size: ${globals.BATCH_SIZE_PER_GPU}
   num_workers: 2
 # Notes for training:
 #

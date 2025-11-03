@@ -9,14 +9,16 @@ authors = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10 <3.13"
+python = "^3.10"
+torch = "^2.8.0"
+torchvision
 numpy = "^1.23.3"
 torchmetrics = "^1.2.0"
 pytorch-lightning = "^1.8.3"
 timm = "^0.9.7"
 omegaconf = "^2.2.3"
 webdataset = "^0.2.35"
-einops = "^0.6.0"
+einops
 scipy = "^1.10.1"
 tensorflow-datasets = {version = "^4.7.0", optional=true}
 tensorflow-cpu = {version = "^2.11.0", optional=true}

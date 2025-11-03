@@ -32,6 +32,9 @@ def build(config, name: str):
     if config.get("use_silicon_vit",False):
         model_name = config.backbone.model
         model = load_model(model_name)
+        model.requires_grad_(False)
+        for p in model.parameters():
+            p.requires_grad=False
         pos_embed = None
         if config.get("pos_embed"):
             pos_embed = utils.build_module(config.pos_embed)

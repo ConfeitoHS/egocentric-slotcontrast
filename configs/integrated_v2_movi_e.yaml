@@ -29,15 +29,15 @@ globals:
   #DVAE_D_MODEL: 128  # dVAE model dimension
 
   # Training configuration
-  NUM_GPUS: 8
-  BATCH_SIZE_PER_GPU: 8  # Adjust based on GPU memory
+  NUM_GPUS: 2
+  BATCH_SIZE_PER_GPU: 32  # Adjust based on GPU memory
   TOTAL_BATCH_SIZE: "${mul: ${.NUM_GPUS}, ${.BATCH_SIZE_PER_GPU}}"
   BASE_LR: 0.0001
 
   # Component toggles
   USE_SILICON_VIT: false
-  USE_DVAE: true  # Enable STEVE's dVAE
-  DVAE_ENCODE_ONLY: true
+  USE_DVAE: false  # Enable STEVE's dVAE
+  DVAE_ENCODE_ONLY: false
  
 trainer:
   max_steps: 300000  # MOVi-E requires longer training
@@ -46,7 +46,7 @@ trainer:
   gradient_clip_val: 0.05
   accelerator: auto
   devices: ${globals.NUM_GPUS}
-  find_unused_parameters: true  # For distributed training stabilit
+  find_unused_parameters: false  # For distributed training stabilit
   precision: bf16-mixed  # Use bfloat16 mixed precision (faster, less memory)
 
 

@@ -70,7 +70,7 @@ class SCModel(nn.Module):
         # self.slot_pooling = args.slot_pooling
     
     def forward(self, x): # input:[64,3,224,224], output:[64,22]
-        output = self.backbone(x)  
+        output = self.backbone(x,inference=True)  
         output = output['processor']['corrector']['slots']  # slots: [64, 1, 11, 64]
         if self.pooling == "mean":
             output = output.mean(dim=2).squeeze(1)  # [64, 64]

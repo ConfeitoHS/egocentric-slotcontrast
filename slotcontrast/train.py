@@ -68,6 +68,7 @@ def _setup_callbacks(args, config, log_path: pathlib.Path, dataset=None) -> Dict
             filename="{step}",
             every_n_train_steps=config.trainer.val_check_interval,
             verbose=args.verbose,
+            save_top_k=-1
         )
         callbacks["checkpointer"] = checkpointer
 
@@ -137,9 +138,9 @@ def _setup_trainer_config(trainer_config: Dict[str, Any]) -> Dict[str, Any]:
     if (
         "strategy" not in trainer_config
         and trainer_config.get("accelerator") != "cpu"
-        and trainer_config.get("devices") != 1
+        #and trainer_config.get("devices") != 1
         and torch.cuda.is_available()
-        and torch.cuda.device_count() > 1
+        #and torch.cuda.device_count() > 1
     ):
         strategy = "ddp_find_unused_parameters_false"
         if "find_unused_parameters" in trainer_config:

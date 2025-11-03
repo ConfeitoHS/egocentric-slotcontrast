@@ -45,8 +45,191 @@ def build(config, name: Optional[str] = "WebdatasetDataModule", data_dir: Option
                 ),
             ),
         )
+    elif name == "SAYCAMDataModule":
+        return SAYCAMDataModule(
+            json_dir = config["json_dir"],
+            img_dir = config["img_dir"],
+            img_size = config["img_size"],
+            ep_length = config["ep_length"],
+            batch_size = config["batch_size"],
+            # train_transforms = transforms.build(config.get("train_transforms")),
+            # val_transforms = transforms.build(config.get("val_transforms")),
+            num_workers = config.get("num_workers", 2),
+        )
     else:
         raise ValueError(f"Unknown dataset module `{name}`")
+
+
+import json, pathlib
+import torchvision
+from torch.utils.data import Dataset, DataLoader
+from PIL import Image
+class SAYCAMDataset(Dataset):
+    def __init__(
+        self,
+        json_file: str,
+        img_dir: str,
+        img_size: int,
+        ep_length: int,
+        img_glob: str = "*.jpg",
+        # transforms: Optional[Callable] = None,
+    ):
+        super().__init__()
+        self.img_dir = pathlib.Path("/") / pathlib.Path(img_dir)
+        self.img_size = img_size
+        self.ep_length = ep_length
+        self.transforms = torchvision.transforms.ToTensor()
+
+        with open(json_file, "r",encoding="utf-8") as f:
+            self.records = json.load(f)['data']
+        
+        # self.episodes = []
+        # for entry in self.records:
+        #     buffer = []
+        #     for frame in entry['frame_filenames']:
+        #         buffer.append(self.img_dir / frame)
+        #         if len(buffer) == self.ep_length:
+        #             self.episodes.append(buffer)
+        #             buffer = []
+        self.episodes = []
+        for entry in self.records:
+            if len(entry['frame_filenames']) < self.ep_length:
+                continue
+            buffer = []
+            for frame in entry['frame_filenames']:
+                buffer.append(self.img_dir / frame)
+                if len(buffer) == self.ep_length:
+                    self.episodes.append(buffer)
+                    buffer = []
+    def __len__(self):
+        return len(self.episodes)
+    
+    def  __getitem__(self, idx: int) -> Dict[str, Any]:
+        frames = []
+        for img_path in self.episodes[idx]:
+            img = Image.open(img_path).convert("RGB").resize((self.img_size, self.img_size))
+            frames.append(self.transforms(img))
+        
+        video = torch.stack(frames, dim=0)  # Shape: (T, C, H, W)
+        
+        return {
+            "__key__": str(idx),
+            "video": video,
+            "batch_padding_mask": torch.tensor(False),
+        }
+        
+
+class SAYCAMDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        json_dir: str,
+        img_dir: str,
+        img_size: int,
+        batch_size: int,
+        ep_length: int,
+        # train_transforms: Optional[Callable] = None,
+        # val_transforms: Optional[Callable] = None,
+        num_workers: int = 2,
+    ):
+        super().__init__()
+        self.json_dir = pathlib.Path(json_dir)
+        self.img_dir = img_dir
+        self.img_size = img_size
+        self.batch_size = batch_size
+        self.ep_length = ep_length
+        # self.train_transforms = train_transforms
+        # self.val_transforms = val_transforms
+        self.num_workers = num_workers
+
+        self.train_dataset = SAYCAMDataset(
+                json_file=self.json_dir / "train.json",
+                img_dir=self.img_dir,
+                img_size=self.img_size,
+                ep_length=self.ep_length,
+                # transforms=self.train_transforms,
+            )
+        self.val_dataset = SAYCAMDataset(
+                json_file=self.json_dir / "val.json",
+                img_dir=self.img_dir,
+                img_size=self.img_size,
+                ep_length=self.ep_length,
+                # transforms=self.val_transforms,
+            )
+        self.test_dataset = SAYCAMDataset(
+                json_file=self.json_dir / 'test.json',
+                img_dir=self.img_dir,
+                img_size=self.img_size,
+                ep_length=self.ep_length,
+                # transforms=self.val_transforms,
+            )
+        
+    def setup(self, stage: Optional[str] = None):
+        # if stage == "fit" or stage is None:
+        #     train_json = self.json_dir / "train.json"
+        #     self.train_dataset = SAYCAMDataset(
+        #         json_file=train_json,
+        #         img_dir=self.img_dir,
+        #         img_size=self.img_size,
+        #         ep_length=self.ep_length,
+        #         # transforms=self.train_transforms,
+        #     )
+        # elif stage == "validate":
+        #     val_json = self.json_dir / "val.json"
+        #     self.val_dataset = SAYCAMDataset(
+        #         json_file=val_json,
+        #         img_dir=self.img_dir,
+        #         img_size=self.img_size,
+        #         ep_length=self.ep_length,
+        #         # transforms=self.val_transforms,
+        #     )
+        # elif stage == "test":
+        #     test_json = self.json_dir / "test.json"
+        #     self.test_dataset = SAYCAMDataset(
+        #         json_file=test_json,
+        #         img_dir=self.img_dir,
+        #         img_size=self.img_size,
+        #         ep_length=self.ep_length,
+        #         # transforms=self.val_transforms,
+        #     )
+        pass
+    
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+    
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+        )
+    
+    def __str__(self) -> str:
+        return (
+            f"SAYCAMDataModule\n"
+            f"  - JSON Directory: {self.json_dir}\n"
+            f"  - Image Directory: {self.img_dir}\n"
+            f"  - Image Size: {self.img_size}\n"
+            f"  - Batch Size: {self.batch_size}\n"
+            f"  - Episode Length: {self.ep_length}\n"
+            f"  - Number of Workers: {self.num_workers}"
+        )
 
 
 class WebdatasetDataModule(pl.LightningDataModule):
